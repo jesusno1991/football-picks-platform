@@ -1,0 +1,119 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class TeamRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    external_id: str
+    name: str
+    short_name: str | None = None
+    country: str | None = None
+    logo_url: str | None = None
+
+
+class CompetitionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    external_id: str
+    name: str
+    country: str
+    logo_url: str | None = None
+    season: str
+    is_active: bool
+
+
+class MatchListRead(BaseModel):
+    id: int
+    external_id: str
+    kickoff_at: datetime
+    status: str
+    venue: str | None = None
+    round: str | None = None
+    season: str
+    competition: CompetitionRead
+    home_team: TeamRead
+    away_team: TeamRead
+    pick_count: int = 0
+    main_probability: float | None = None
+    best_odds: float | None = None
+    confidence: float | None = None
+
+
+class TeamFormRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    team_id: int
+    matches_sample: int
+    goals_for_avg: float | None = None
+    goals_against_avg: float | None = None
+    corners_for_avg: float | None = None
+    corners_against_avg: float | None = None
+    shots_avg: float | None = None
+    shots_on_target_avg: float | None = None
+    possession_avg: float | None = None
+    over_9_5_corners_rate: float | None = None
+
+
+class PredictionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    match_id: int
+    market: str
+    selection: str
+    line: float | None = None
+    predicted_probability: float | None = None
+    fair_odds: float | None = None
+    available_odds: float | None = None
+    expected_value: float | None = None
+    confidence: float | None = None
+    recommended_stake: float
+    explanation: str
+    feature_snapshot: str | None = None
+    generated_at: datetime
+    published_at: datetime | None = None
+    status: str
+    result: str | None = None
+    profit: float | None = None
+
+
+class MatchDetailRead(MatchListRead):
+    home_form: TeamFormRead | None = None
+    away_form: TeamFormRead | None = None
+    predictions: list[PredictionRead] = []
+
+
+class StatisticsOverview(BaseModel):
+    total_picks: int
+    wins: int
+    losses: int
+    voids: int
+    hit_rate: float
+    profit: float
+    yield_percentage: float
+    average_odds: float
+    total_stake: float
+    maximum_drawdown: float
+
+
+class PerformanceRow(BaseModel):
+    name: str
+    market: str | None = None
+    sample_size: int
+    wins: int
+    losses: int
+    voids: int
+    profit: float
+    yield_percentage: float
+    hit_rate: float
+    sample_label: str
+
+
+class ProfitPoint(BaseModel):
+    date: datetime
+    profit: float
+    cumulative_profit: float

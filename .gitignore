@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+football_picks.db
+uvicorn.*.log
+.env
+
+node_modules/
+dist/
+.vite/
+
+*.log
