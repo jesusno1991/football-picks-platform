@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     admin_email: str = Field(default="admin@example.com", alias="ADMIN_EMAIL")
     admin_password: str = Field(default="admin", alias="ADMIN_PASSWORD")
     football_api_key: str | None = Field(default=None, alias="FOOTBALL_API_KEY")
+    api_football_key: str | None = Field(default=None, alias="API_FOOTBALL_KEY")
+    api_football_base_url: str = Field(
+        default="https://v3.football.api-sports.io",
+        alias="API_FOOTBALL_BASE_URL",
+    )
     odds_api_key: str | None = Field(default=None, alias="ODDS_API_KEY")
     rapidapi_key: str | None = Field(default=None, alias="RAPIDAPI_KEY")
     flashscore_rapidapi_host: str = Field(default="flashscore4.p.rapidapi.com", alias="FLASHSCORE_RAPIDAPI_HOST")
