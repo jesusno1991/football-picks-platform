@@ -27,6 +27,8 @@ class CompetitionRead(BaseModel):
 
 
 class MatchListRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     external_id: str
     kickoff_at: datetime
@@ -79,6 +81,7 @@ class PredictionRead(BaseModel):
     status: str
     result: str | None = None
     profit: float | None = None
+    match: MatchListRead | None = None
 
 
 class MatchDetailRead(MatchListRead):

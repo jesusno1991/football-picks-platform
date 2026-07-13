@@ -78,7 +78,12 @@ def get_prediction_system(db: Session, code: str) -> PredictionSystem | None:
 
 
 def list_predictions(db: Session, status: str | None = None, market: str | None = None) -> list[Prediction]:
-    stmt = select(Prediction).options(joinedload(Prediction.match), joinedload(Prediction.system))
+    stmt = select(Prediction).options(
+        joinedload(Prediction.match).joinedload(Match.competition),
+        joinedload(Prediction.match).joinedload(Match.home_team),
+        joinedload(Prediction.match).joinedload(Match.away_team),
+        joinedload(Prediction.system),
+    )
     if status:
         stmt = stmt.where(Prediction.status == status)
     if market:

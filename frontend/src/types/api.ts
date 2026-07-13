@@ -32,6 +32,7 @@ export type Prediction = {
   status: string
   result?: string | null
   profit?: number | null
+  match?: Match | null
 }
 
 export type Match = {
