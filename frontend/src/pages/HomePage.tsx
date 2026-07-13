@@ -41,6 +41,12 @@ export function HomePage() {
         </div>
         <div className="card overflow-hidden">
           {isLoading ? <div className="p-4">Cargando partidos...</div> : null}
+          {!isLoading && matches.length === 0 ? (
+            <div className="p-5 text-sm text-slate-600">
+              No hay partidos reales cargados para esta fecha. Revisa el proveedor de datos en
+              <span className="font-bold"> /api/provider/status</span>.
+            </div>
+          ) : null}
           {Object.entries(grouped).map(([competition, rows]) => (
             <div key={competition}>
               <div className="bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">{competition}</div>

@@ -1,10 +1,13 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
+from app.collectors.factory import get_provider
 from app.database import get_db, init_db
+from app.models import Competition, Match, Odds, Prediction, SystemPerformance, Team, TeamForm, TeamMatchStatistics
 from app.repositories import queries
 from app.schemas.schemas import CompetitionRead, MatchDetailRead, MatchListRead, PredictionRead, TeamRead
 from app.services.collection_service import collect_mock_data
@@ -24,6 +27,14 @@ router = APIRouter(prefix="/api")
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/provider/status")
+def provider_status(match_date: date | None = Query(default=None, alias="date")) -> dict:
+    provider = get_provider()
+    if hasattr(provider, "diagnostics"):
+        return provider.diagnostics(match_date or date.today())
+    return {"provider": provider.__class__.__name__, "ok": True}
 
 
 @router.get("/matches", response_model=list[MatchListRead])
@@ -123,6 +134,14 @@ def admin_verify_results(db: Session = Depends(get_db)):
 @router.post("/admin/recalculate-statistics", dependencies=[Depends(require_admin)])
 def admin_recalculate_statistics(db: Session = Depends(get_db)):
     return overview(db)
+
+
+@router.post("/admin/clear-data", dependencies=[Depends(require_admin)])
+def admin_clear_data(db: Session = Depends(get_db)):
+    for model in (SystemPerformance, Prediction, Odds, TeamMatchStatistics, TeamForm, Match, Team, Competition):
+        db.execute(delete(model))
+    db.commit()
+    return {"status": "cleared"}
 
 
 def _match_list_read(match, pick_count: int) -> MatchListRead:
