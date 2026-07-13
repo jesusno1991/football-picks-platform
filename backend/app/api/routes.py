@@ -10,7 +10,7 @@ from app.database import get_db, init_db
 from app.models import Competition, Match, Odds, Prediction, SystemPerformance, Team, TeamForm, TeamMatchStatistics
 from app.repositories import queries
 from app.schemas.schemas import CompetitionRead, MatchDetailRead, MatchListRead, PredictionRead, TeamRead
-from app.services.collection_service import collect_mock_data
+from app.services.collection_service import collect_mock_data, collect_schedule_data
 from app.services.prediction_service import generate_predictions
 from app.services.settlement_service import verify_results
 from app.services.statistics_service import (
@@ -183,5 +183,4 @@ def _match_list_read(match, pick_count: int) -> MatchListRead:
 def _ensure_date_loaded(db: Session, match_date: date) -> None:
     if queries.list_matches(db, match_date):
         return
-    collect_mock_data(db, match_date)
-    generate_predictions(db)
+    collect_schedule_data(db, match_date)

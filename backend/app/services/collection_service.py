@@ -141,6 +141,67 @@ def collect_mock_data(db: Session, match_date: date | None = None) -> dict[str, 
     return {"competitions": competitions, "teams": teams, "matches": matches, "forms": forms, "odds": odds_count}
 
 
+def collect_schedule_data(db: Session, match_date: date | None = None) -> dict[str, int]:
+    provider = get_provider()
+    match_date = match_date or date.today()
+    competitions = 0
+    teams = 0
+    matches = 0
+
+    competition_by_external = {}
+    match_items = provider.get_matches(match_date)
+
+    for item in provider.get_competitions():
+        competition = db.scalar(select(Competition).where(Competition.external_id == item["external_id"]))
+        if not competition:
+            competition = Competition(**item, is_active=True)
+            db.add(competition)
+            competitions += 1
+        competition_by_external[item["external_id"]] = competition
+    db.flush()
+
+    for item in match_items:
+        home = _upsert_team(db, item["home_team"])
+        away = _upsert_team(db, item["away_team"])
+        teams += 2
+        competition = competition_by_external.get(item["competition_external_id"])
+        if not competition:
+            competition_data = item.get(
+                "competition",
+                {
+                    "external_id": item["competition_external_id"],
+                    "name": "Unknown Competition",
+                    "country": "Unknown",
+                    "season": item.get("season", str(match_date.year)),
+                    "logo_url": None,
+                },
+            )
+            competition = Competition(**competition_data, is_active=True)
+            db.add(competition)
+            db.flush()
+            competition_by_external[competition.external_id] = competition
+            competitions += 1
+        match = db.scalar(select(Match).where(Match.external_id == item["external_id"]))
+        if not match:
+            db.add(
+                Match(
+                    external_id=item["external_id"],
+                    competition_id=competition.id,
+                    home_team_id=home.id,
+                    away_team_id=away.id,
+                    kickoff_at=item["kickoff_at"],
+                    status="scheduled",
+                    venue=item["venue"],
+                    round=item["round"],
+                    season=item["season"],
+                )
+            )
+            matches += 1
+    upsert_prediction_systems(db)
+    db.commit()
+    return {"competitions": competitions, "teams": teams, "matches": matches, "forms": 0, "odds": 0}
+
+
 def _upsert_team(db: Session, data: dict) -> Team:
     team = db.scalar(select(Team).where(Team.external_id == data["external_id"]))
     if team:

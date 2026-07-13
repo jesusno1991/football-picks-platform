@@ -9,14 +9,16 @@ from app.services.prediction_service import generate_predictions
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["init-db", "load-mock", "generate-predictions"])
+    parser.add_argument("--date", dest="match_date", default=None)
     args = parser.parse_args()
+    match_date = date.fromisoformat(args.match_date) if args.match_date else date.today()
 
     init_db()
     with SessionLocal() as db:
         if args.command == "init-db":
             print({"status": "ok", "systems": upsert_prediction_systems(db)})
         elif args.command == "load-mock":
-            print(collect_mock_data(db, date.today()))
+            print(collect_mock_data(db, match_date))
         elif args.command == "generate-predictions":
             print(generate_predictions(db))
 
