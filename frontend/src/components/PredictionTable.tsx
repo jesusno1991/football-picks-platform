@@ -41,7 +41,11 @@ export function PredictionTable({ predictions }: { predictions: Prediction[] }) 
                 <td className="px-3 py-3">{formatDecimal(prediction.expected_value, 3)}</td>
                 <td className="px-3 py-3">{prediction.recommended_stake}u</td>
                 <td className="px-3 py-3">
-                  <span className="rounded-full bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800">{prediction.status}</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${
+                    prediction.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-cyan-100 text-cyan-800'
+                  }`}>
+                    {prediction.status === 'published' ? 'Para publicar' : prediction.status}
+                  </span>
                 </td>
               </tr>
             )

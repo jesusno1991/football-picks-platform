@@ -15,8 +15,8 @@ export async function fetchMatch(id: number) {
   return response.data
 }
 
-export async function fetchPredictions() {
-  const response = await api.get<Prediction[]>('/api/predictions')
+export async function fetchPredictions(status?: string, date?: string) {
+  const response = await api.get<Prediction[]>('/api/predictions', { params: { status, date } })
   return response.data
 }
 

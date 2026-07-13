@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import type React from 'react'
-import { BarChart3, ListChecks, Trophy } from 'lucide-react'
+import { BarChart3, CheckCircle2, ListChecks, Trophy } from 'lucide-react'
 import { HomePage } from './HomePage'
 import { PicksPage } from './PicksPage'
 import { StatsPage } from './StatsPage'
 
-type Page = 'matches' | 'picks' | 'stats'
+type Page = 'matches' | 'picks' | 'publishable' | 'stats'
 
 export function App() {
   const [page, setPage] = useState<Page>('matches')
@@ -19,11 +19,13 @@ export function App() {
         <nav className="flex flex-wrap gap-2">
           <NavButton active={page === 'matches'} onClick={() => setPage('matches')} icon={<Trophy size={17} />} label="Partidos" />
           <NavButton active={page === 'picks'} onClick={() => setPage('picks')} icon={<ListChecks size={17} />} label="Picks" />
+          <NavButton active={page === 'publishable'} onClick={() => setPage('publishable')} icon={<CheckCircle2 size={17} />} label="Para publicar" />
           <NavButton active={page === 'stats'} onClick={() => setPage('stats')} icon={<BarChart3 size={17} />} label="Estadísticas" />
         </nav>
       </header>
       {page === 'matches' ? <HomePage /> : null}
       {page === 'picks' ? <PicksPage /> : null}
+      {page === 'publishable' ? <PicksPage onlyPublishable /> : null}
       {page === 'stats' ? <StatsPage /> : null}
     </main>
   )

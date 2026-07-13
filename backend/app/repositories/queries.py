@@ -91,6 +91,32 @@ def list_predictions(db: Session, status: str | None = None, market: str | None 
     return list(db.scalars(stmt.order_by(Prediction.generated_at.desc())).unique())
 
 
+def list_predictions_for_date(
+    db: Session,
+    match_date: date,
+    status: str | None = None,
+    market: str | None = None,
+) -> list[Prediction]:
+    start = datetime.combine(match_date, time.min)
+    end = datetime.combine(match_date, time.max)
+    stmt = (
+        select(Prediction)
+        .join(Prediction.match)
+        .options(
+            joinedload(Prediction.match).joinedload(Match.competition),
+            joinedload(Prediction.match).joinedload(Match.home_team),
+            joinedload(Prediction.match).joinedload(Match.away_team),
+            joinedload(Prediction.system),
+        )
+        .where(Match.kickoff_at.between(start, end))
+    )
+    if status:
+        stmt = stmt.where(Prediction.status == status)
+    if market:
+        stmt = stmt.where(Prediction.market == market)
+    return list(db.scalars(stmt.order_by(Prediction.generated_at.desc())).unique())
+
+
 def get_prediction(db: Session, prediction_id: int) -> Prediction | None:
     return db.get(Prediction, prediction_id)
 

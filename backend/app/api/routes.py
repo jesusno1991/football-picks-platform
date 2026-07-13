@@ -45,6 +45,8 @@ def get_matches(
     team: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[MatchListRead]:
+    if match_date:
+        _ensure_date_loaded(db, match_date)
     matches = queries.list_matches(db, match_date, country, competition_id, team)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
@@ -78,7 +80,15 @@ def get_team(team_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/predictions", response_model=list[PredictionRead])
-def get_predictions(status: str | None = None, market: str | None = None, db: Session = Depends(get_db)):
+def get_predictions(
+    status: str | None = None,
+    market: str | None = None,
+    match_date: date | None = Query(default=None, alias="date"),
+    db: Session = Depends(get_db),
+):
+    if match_date:
+        _ensure_date_loaded(db, match_date)
+        return queries.list_predictions_for_date(db, match_date, status, market)
     return queries.list_predictions(db, status, market)
 
 
@@ -168,3 +178,10 @@ def _match_list_read(match, pick_count: int) -> MatchListRead:
         best_odds=best.available_odds if best else None,
         confidence=best.confidence if best else None,
     )
+
+
+def _ensure_date_loaded(db: Session, match_date: date) -> None:
+    if queries.list_matches(db, match_date):
+        return
+    collect_mock_data(db, match_date)
+    generate_predictions(db)

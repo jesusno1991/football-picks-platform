@@ -43,8 +43,7 @@ export function HomePage() {
           {isLoading ? <div className="p-4">Cargando partidos...</div> : null}
           {!isLoading && matches.length === 0 ? (
             <div className="p-5 text-sm text-slate-600">
-              No hay partidos reales cargados para esta fecha. Revisa el proveedor de datos en
-              <span className="font-bold"> /api/provider/status</span>.
+              No hay partidos para esta fecha en API-Football.
             </div>
           ) : null}
           {Object.entries(grouped).map(([competition, rows]) => (

@@ -9,8 +9,8 @@ export function useMatch(id?: number) {
   return useQuery({ queryKey: ['match', id], queryFn: () => fetchMatch(id!), enabled: Boolean(id) })
 }
 
-export function usePredictions() {
-  return useQuery({ queryKey: ['predictions'], queryFn: fetchPredictions })
+export function usePredictions(status?: string, date?: string) {
+  return useQuery({ queryKey: ['predictions', status ?? 'all', date ?? 'all'], queryFn: () => fetchPredictions(status, date) })
 }
 
 export function useOverview() {
