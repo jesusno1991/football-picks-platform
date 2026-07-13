@@ -142,7 +142,7 @@ def _upsert_team(db: Session, data: dict) -> Team:
     team = db.scalar(select(Team).where(Team.external_id == data["external_id"]))
     if team:
         return team
-    team = Team(**data, logo_url=data.get("logo_url"))
+    team = Team(**data)
     db.add(team)
     db.flush()
     return team

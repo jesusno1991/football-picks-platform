@@ -20,6 +20,7 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
             "x-rapidapi-host": self.settings.flashscore_rapidapi_host,
         }
         self._matches_by_date: dict[str, list[dict[str, Any]]] = {}
+        self._odds_by_match: dict[str, dict[str, Any]] = {}
         self._last_error: str | None = None
 
     def get_competitions(self) -> list[dict[str, Any]]:
@@ -35,6 +36,7 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
         raw = self._fetch_matches(match_date)
         matches = [self._normalize_match(item, match_date) for item in _find_match_nodes(raw)]
         matches = [match for match in matches if match is not None]
+        self._odds_by_match = {match["external_id"]: match.get("raw_odds", {}) for match in matches}
         self._matches_by_date[key] = matches
         return matches
 
@@ -76,7 +78,23 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
         return []
 
     def get_odds(self, match_id: str) -> list[dict[str, Any]]:
-        return []
+        raw = self._odds_by_match.get(match_id, {})
+        odds: list[dict[str, Any]] = []
+        mapping = {"1": "home", "X": "draw", "2": "away"}
+        if isinstance(raw, dict):
+            for source_selection, selection in mapping.items():
+                value = raw.get(source_selection)
+                if value:
+                    odds.append(
+                        {
+                            "bookmaker": "FlashScore",
+                            "market": "result",
+                            "selection": selection,
+                            "line": None,
+                            "odds": float(value),
+                        }
+                    )
+        return odds
 
     def get_results(self, match_date: date) -> list[dict[str, Any]]:
         return []
@@ -124,6 +142,7 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
         paths = [configured.format(date=formatted)] if configured else []
         paths.extend(
             [
+                f"/api/flashscore/v2/matches/list-by-date?sport_id=1&date={formatted}&timezone=Europe%2FMadrid",
                 f"/api/football/matches?date={formatted}",
                 f"/api/matches?date={formatted}",
                 f"/api/events?date={formatted}",
@@ -151,20 +170,20 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
 
         competition_name = _first_text(
             item,
-            ["league.name", "tournament.name", "competition.name", "category.name", "event.tournament.name"],
+            ["tournament_name", "league.name", "tournament.name", "competition.name", "category.name", "event.tournament.name"],
             default="Unknown Competition",
         )
         country = _first_text(
             item,
-            ["country.name", "league.country.name", "tournament.category.name", "category.country.name"],
+            ["country_name", "country.name", "league.country.name", "tournament.category.name", "category.country.name"],
             default="Unknown",
         )
         competition_id = _first_text(
             item,
-            ["league.id", "tournament.id", "competition.id", "category.id"],
+            ["tournament_id", "league.id", "tournament.id", "competition.id", "category.id"],
             default=f"flashscore-{country}-{competition_name}",
         )
-        external_id = _first_text(item, ["id", "eventId", "matchId", "fixtureId"], default=f"{home['external_id']}-{away['external_id']}-{match_date}")
+        external_id = _first_text(item, ["match_id", "id", "eventId", "matchId", "fixtureId"], default=f"{home['external_id']}-{away['external_id']}-{match_date}")
         kickoff_at = _parse_datetime(item, match_date)
 
         return {
@@ -175,7 +194,7 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
                 "name": competition_name,
                 "country": country,
                 "season": str(match_date.year),
-                "logo_url": None,
+                "logo_url": _first_text(item, ["tournament_image_path"], default=None),
             },
             "home_team": home,
             "away_team": away,
@@ -183,12 +202,24 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
             "venue": _first_text(item, ["venue.name", "stadium.name"], default=None),
             "round": _first_text(item, ["round.name", "round"], default=None),
             "season": str(match_date.year),
+            "raw_odds": item.get("odds") or {},
         }
 
 
 def _find_match_nodes(payload: Any) -> list[dict[str, Any]]:
     nodes: list[dict[str, Any]] = []
     if isinstance(payload, dict):
+        if isinstance(payload.get("matches"), list):
+            tournament = {
+                "tournament_id": payload.get("tournament_id"),
+                "tournament_url": payload.get("tournament_url"),
+                "tournament_name": payload.get("name"),
+                "country_name": payload.get("country_name"),
+                "tournament_image_path": payload.get("image_path"),
+            }
+            for match in payload["matches"]:
+                if isinstance(match, dict):
+                    nodes.extend(_find_match_nodes({**match, **tournament}))
         if _pick_team(payload, "home") and _pick_team(payload, "away"):
             nodes.append(payload)
         for value in payload.values():
@@ -212,13 +243,13 @@ def _pick_team(item: dict[str, Any], side: str) -> dict[str, Any] | None:
         if isinstance(value, dict):
             name = _first_text(value, ["name", "shortName", "participantName", "teamName"], default=None)
             if name:
-                external_id = _first_text(value, ["id", "teamId", "participantId"], default=name)
+                external_id = _first_text(value, ["id", "teamId", "team_id", "participantId"], default=name)
                 return {
                     "external_id": f"flashscore-team-{external_id}",
                     "name": name,
-                    "short_name": _first_text(value, ["shortName", "abbr"], default=name[:3].upper()),
+                    "short_name": _first_text(value, ["shortName", "short_name", "abbr"], default=name[:3].upper()),
                     "country": _first_text(value, ["country.name", "country"], default=None),
-                    "logo_url": _first_text(value, ["logo", "logoUrl", "image"], default=None),
+                    "logo_url": _first_text(value, ["logo", "logoUrl", "image", "small_image_path"], default=None),
                 }
     return None
 
@@ -237,7 +268,7 @@ def _first_text(item: dict[str, Any], paths: list[str], default: Any = "") -> An
 
 
 def _parse_datetime(item: dict[str, Any], match_date: date) -> datetime:
-    raw = _first_text(item, ["startTime", "startTimestamp", "time", "kickoff", "startDate"], default=None)
+    raw = _first_text(item, ["timestamp", "startTime", "startTimestamp", "time", "kickoff", "startDate"], default=None)
     if raw:
         try:
             if str(raw).isdigit():
