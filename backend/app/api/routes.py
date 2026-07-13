@@ -118,7 +118,10 @@ def statistics_profit_curve(db: Session = Depends(get_db)):
 @router.post("/admin/collect", dependencies=[Depends(require_admin)])
 def admin_collect(match_date: date | None = None, db: Session = Depends(get_db)):
     init_db()
-    return collect_mock_data(db, match_date)
+    try:
+        return collect_mock_data(db, match_date)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/admin/generate-predictions", dependencies=[Depends(require_admin)])
