@@ -104,7 +104,10 @@ def collect_mock_data(db: Session, match_date: date | None = None) -> dict[str, 
             matches += 1
         db.flush()
         for team in (home, away):
-            history = provider.get_team_history(team.external_id)
+            if hasattr(provider, "get_team_history_for_match"):
+                history = provider.get_team_history_for_match(match.external_id, team.external_id)
+            else:
+                history = provider.get_team_history(team.external_id)
             form = db.scalar(
                 select(TeamForm).where(
                     TeamForm.team_id == team.id,

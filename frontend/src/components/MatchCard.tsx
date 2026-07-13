@@ -27,7 +27,7 @@ export function MatchCard({ match, selected, onSelect }: Props) {
         <span>-</span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-        {match.pick_count ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">Pick</span> : null}
+        {match.pick_count ? <span className="rounded-full bg-cyan-100 px-2 py-1 text-cyan-800">Análisis</span> : null}
         <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">Prob. {formatPercent(match.main_probability)}</span>
         <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">Cuota {match.best_odds ?? '-'}</span>
       </div>

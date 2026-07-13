@@ -149,7 +149,9 @@ def admin_clear_data(db: Session = Depends(get_db)):
 
 def _match_list_read(match, pick_count: int) -> MatchListRead:
     published = [prediction for prediction in match.predictions if prediction.status == "published"]
-    best = published[0] if published else None
+    candidates = [prediction for prediction in match.predictions if prediction.predicted_probability is not None]
+    candidates.sort(key=lambda prediction: (prediction.expected_value or -999, prediction.confidence or 0), reverse=True)
+    best = published[0] if published else (candidates[0] if candidates else None)
     return MatchListRead(
         id=match.id,
         external_id=match.external_id,

@@ -92,6 +92,8 @@ def get_prediction(db: Session, prediction_id: int) -> Prediction | None:
 
 def pick_counts_by_match(db: Session) -> dict[int, int]:
     rows = db.execute(
-        select(Prediction.match_id, func.count(Prediction.id)).where(Prediction.status == "published").group_by(Prediction.match_id)
+        select(Prediction.match_id, func.count(Prediction.id))
+        .where(Prediction.predicted_probability.is_not(None))
+        .group_by(Prediction.match_id)
     ).all()
     return {int(match_id): int(count) for match_id, count in rows}
