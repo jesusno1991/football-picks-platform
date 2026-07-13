@@ -121,7 +121,7 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
     def _candidate_match_paths(self, match_date: date) -> list[str]:
         formatted = match_date.isoformat()
         configured = self.settings.flashscore_matches_path
-        paths = [configured] if configured else []
+        paths = [configured.format(date=formatted)] if configured else []
         paths.extend(
             [
                 f"/api/football/matches?date={formatted}",
@@ -133,6 +133,12 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
                 f"/matches/v2/list-by-date?category=soccer&date={formatted}",
                 f"/v2/matches/list-by-date?category=soccer&date={formatted}",
                 f"/football/matches?date={formatted}",
+                f"/get-matches-by-date?date={formatted}",
+                f"/get-matches-by-day?date={formatted}",
+                "/get-live-matches",
+                f"/v2/get-matches-by-date?date={formatted}",
+                f"/v2/get-matches-by-day?date={formatted}",
+                "/v2/get-live-matches",
             ]
         )
         return [path for path in paths if path]
