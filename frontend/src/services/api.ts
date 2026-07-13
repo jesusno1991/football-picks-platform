@@ -2,7 +2,7 @@ import axios from 'axios'
 import type { Match, Overview, Prediction } from '../types/api'
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL || '',
 })
 
 export async function fetchMatches(date?: string) {
