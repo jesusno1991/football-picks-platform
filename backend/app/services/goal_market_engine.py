@@ -133,6 +133,9 @@ def probability_for_market(
     if family == "double_chance":
         probability = _double_chance_probability(matrix, selection)
         return SettlementDistribution(probability_full_win=probability, probability_full_loss=1 - probability), probability, "binary"
+    if family == "win_btts":
+        probability = _win_btts_probability(matrix, selection)
+        return SettlementDistribution(probability_full_win=probability, probability_full_loss=1 - probability), probability, "binary"
     if family == "draw_no_bet":
         win = _result_probability(matrix, selection)
         push = _result_probability(matrix, "draw")
@@ -142,6 +145,12 @@ def probability_for_market(
         return distribution, _binary_probability_from_distribution(distribution), "asian_handicap"
     if family == "correct_score":
         probability = _correct_score_probability(matrix, selection)
+        return SettlementDistribution(probability_full_win=probability, probability_full_loss=1 - probability), probability, "binary"
+    if family == "first_goal":
+        probability = _first_goal_probability(selection, period, lambdas)
+        return SettlementDistribution(probability_full_win=probability, probability_full_loss=1 - probability), probability, "binary"
+    if family == "qualification":
+        probability = _qualification_proxy_probability(matrix, selection)
         return SettlementDistribution(probability_full_win=probability, probability_full_loss=1 - probability), probability, "binary"
     return SettlementDistribution(), None, "unsupported"
 
@@ -350,6 +359,16 @@ def _double_chance_probability(matrix: dict[tuple[int, int], float], selection: 
     return 0.0
 
 
+def _win_btts_probability(matrix: dict[tuple[int, int], float], selection: str) -> float:
+    if selection == "home_yes":
+        return round(sum(probability for (home, away), probability in matrix.items() if home > away and away >= 1), 6)
+    if selection == "away_yes":
+        return round(sum(probability for (home, away), probability in matrix.items() if away > home and home >= 1), 6)
+    if selection == "draw_yes":
+        return round(sum(probability for (home, away), probability in matrix.items() if home == away and home >= 1), 6)
+    return 0.0
+
+
 def _asian_handicap_distribution(matrix: dict[tuple[int, int], float], team_scope: str, line: float) -> SettlementDistribution:
     full_win = half_win = push = half_loss = full_loss = 0.0
     for (home_goals, away_goals), probability in matrix.items():
@@ -383,6 +402,39 @@ def _correct_score_probability(matrix: dict[tuple[int, int], float], selection: 
     except (ValueError, AttributeError):
         return 0.0
     return round(matrix.get((home_goals, away_goals), 0.0), 6)
+
+
+def _first_goal_probability(selection: str, period: str, lambdas: GoalLambdas) -> float:
+    if period == "first_half":
+        home_lambda = lambdas.home_first_half
+        away_lambda = lambdas.away_first_half
+    elif period == "second_half":
+        home_lambda = lambdas.home_second_half
+        away_lambda = lambdas.away_second_half
+    else:
+        home_lambda = lambdas.home_full_time
+        away_lambda = lambdas.away_full_time
+    total_lambda = home_lambda + away_lambda
+    no_goal = math.exp(-total_lambda)
+    if selection == "no_goal":
+        return round(no_goal, 6)
+    if total_lambda <= 0:
+        return 0.0
+    goal_probability = 1 - no_goal
+    if selection == "home":
+        return round(goal_probability * home_lambda / total_lambda, 6)
+    if selection == "away":
+        return round(goal_probability * away_lambda / total_lambda, 6)
+    return 0.0
+
+
+def _qualification_proxy_probability(matrix: dict[tuple[int, int], float], selection: str) -> float:
+    # Without aggregate score or bracket data, qualification is only a conservative proxy.
+    if selection == "home":
+        return _result_probability(matrix, "home")
+    if selection == "away":
+        return _result_probability(matrix, "away")
+    return 0.0
 
 
 def _settlement_ev(distribution: SettlementDistribution, odds: float) -> float:

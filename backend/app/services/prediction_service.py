@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 from app.models import Match, Prediction
 from app.predictors.registry import get_predictors
 from app.repositories.queries import get_prediction_system, latest_odds, latest_team_form, list_matches
+from app.services.collection_service import upsert_prediction_systems
+from app.services.tipstrr_market_service import build_tipstrr_predictions
 
 
 def generate_predictions(db: Session) -> dict[str, int]:
+    upsert_prediction_systems(db)
     created = 0
     updated = 0
     skipped = 0
@@ -41,6 +44,33 @@ def generate_predictions(db: Session) -> dict[str, int]:
                 except IntegrityError:
                     db.rollback()
                     skipped += 1
+        system = get_prediction_system(db, "TIPSTRR_MARKET_ENGINE")
+        if system and system.is_active:
+            for prediction in build_tipstrr_predictions(db, match, system):
+                existing = _find_existing(db, prediction)
+                if existing:
+                    for field in (
+                        "predicted_probability",
+                        "fair_odds",
+                        "available_odds",
+                        "expected_value",
+                        "confidence",
+                        "recommended_stake",
+                        "explanation",
+                        "feature_snapshot",
+                        "status",
+                        "published_at",
+                    ):
+                        setattr(existing, field, getattr(prediction, field))
+                    updated += 1
+                else:
+                    db.add(prediction)
+                    try:
+                        db.flush()
+                        created += 1
+                    except IntegrityError:
+                        db.rollback()
+                        skipped += 1
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped}
 

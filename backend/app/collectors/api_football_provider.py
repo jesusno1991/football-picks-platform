@@ -278,10 +278,10 @@ def _normalize_odd_value(bet_name: str, value: dict[str, Any]) -> dict[str, Any]
 
     bet_lower = bet_name.lower()
     selection_lower = selection_name.lower()
-    if bet_lower in {"match winner", "1x2", "fulltime result"} or "match winner" in bet_lower:
+    if bet_lower in {"match winner", "1x2", "fulltime result"} or "match winner" in bet_lower or "half time result" in bet_lower:
         selection = {"home": "home", "1": "home", "draw": "draw", "x": "draw", "away": "away", "2": "away"}.get(selection_lower)
         if selection:
-            return _odd("result", "match_result", "full_time", "all", selection, None, odd)
+            return _odd("result", "match_result", _period_from_bet(bet_lower), "all", selection, None, odd)
 
     if "double chance" in bet_lower:
         selection = {"1X": "1x", "X2": "x2", "12": "12"}.get(selection_name.upper().replace(" ", ""))
@@ -292,6 +292,29 @@ def _normalize_odd_value(bet_name: str, value: dict[str, Any]) -> dict[str, Any]
         selection = {"home": "home", "1": "home", "away": "away", "2": "away"}.get(selection_lower)
         if selection:
             return _odd("draw_no_bet", "draw_no_bet", "full_time", "all", selection, None, odd)
+
+    if ("winner" in bet_lower or "result" in bet_lower) and "both teams" in bet_lower:
+        compact = selection_lower.replace(" ", "").replace("&", "").replace("+", "")
+        selection = {
+            "homeyes": "home_yes",
+            "1yes": "home_yes",
+            "awayyes": "away_yes",
+            "2yes": "away_yes",
+            "drawyes": "draw_yes",
+            "xyes": "draw_yes",
+        }.get(compact)
+        if selection:
+            return _odd("win_btts", "win_btts", _period_from_bet(bet_lower), "all", selection, None, odd)
+
+    if "first goal" in bet_lower or "first team to score" in bet_lower:
+        selection = {"home": "home", "1": "home", "away": "away", "2": "away", "no goal": "no_goal", "none": "no_goal"}.get(selection_lower)
+        if selection:
+            return _odd("first_goal", "first_goal", _period_from_bet(bet_lower), "all", selection, None, odd)
+
+    if "to qualify" in bet_lower or "qualification" in bet_lower:
+        selection = {"home": "home", "1": "home", "away": "away", "2": "away"}.get(selection_lower)
+        if selection:
+            return _odd("qualification", "qualification", "full_time", "all", selection, None, odd)
 
     if "correct score" in bet_lower:
         if "-" in selection_name:

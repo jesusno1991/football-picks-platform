@@ -34,7 +34,7 @@ export function PredictionTable({ predictions }: { predictions: Prediction[] }) 
                 <td className="px-3 py-3 font-semibold">
                   {kickoff ? kickoff.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
                 </td>
-                <td className="px-3 py-3 font-bold">{marketLabel(prediction.market, prediction.selection, prediction.line)}</td>
+                <td className="px-3 py-3 font-bold">{predictionLabel(prediction)}</td>
                 <td className="px-3 py-3">{formatPercent(prediction.predicted_probability)}</td>
                 <td className="px-3 py-3">{formatDecimal(prediction.fair_odds)}</td>
                 <td className="px-3 py-3">{formatDecimal(prediction.available_odds)}</td>
@@ -54,4 +54,17 @@ export function PredictionTable({ predictions }: { predictions: Prediction[] }) 
       </table>
     </div>
   )
+}
+
+function predictionLabel(prediction: Prediction) {
+  if (prediction.feature_snapshot) {
+    try {
+      const snapshot = JSON.parse(prediction.feature_snapshot) as { label?: string; group?: string }
+      if (snapshot.label && snapshot.group) return `${snapshot.group} · ${snapshot.label}`
+      if (snapshot.label) return snapshot.label
+    } catch {
+      // Keep the legacy label path for older predictions.
+    }
+  }
+  return marketLabel(prediction.market, prediction.selection, prediction.line)
 }

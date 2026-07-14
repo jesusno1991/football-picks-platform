@@ -29,6 +29,7 @@ export type Prediction = {
   confidence?: number | null
   recommended_stake: number
   explanation: string
+  feature_snapshot?: string | null
   status: string
   result?: string | null
   profit?: number | null

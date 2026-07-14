@@ -13,8 +13,12 @@ const decisions = [
 const groups = [
   'Todos',
   '1X2',
+  'Resultado al descanso',
   'Empate no apuesta',
+  'Doble oportunidad',
+  'Gana + ambos marcan',
   'Goles partido',
+  'Goles al descanso',
   'Marcador correcto',
   'Goles local',
   'Goles visitante',
@@ -22,6 +26,8 @@ const groups = [
   '1a parte visitante',
   'Handicap asiatico',
   'Handicap asiatico 1a parte',
+  'Primer gol',
+  'Se clasificara',
 ]
 
 export function TipstrrMarketsPage() {

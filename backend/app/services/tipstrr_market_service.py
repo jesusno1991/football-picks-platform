@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Match, Odds
+from app.models import Match, Odds, Prediction
 from app.repositories import queries
 from app.services.goal_market_engine import (
     GoalLambdas,
@@ -16,18 +17,8 @@ from app.services.goal_market_engine import (
     estimate_goal_lambdas,
     probability_for_market,
 )
+from app.services.market_catalog import MarketSpec, base_market_catalog, merge_market_specs, supported_market_specs_from_odds
 from app.services.settlement_engine import fair_odds_from_distribution
-
-
-@dataclass(frozen=True)
-class TipstrrMarketSpec:
-    group: str
-    family: str
-    period: str
-    team_scope: str
-    selection: str
-    line: float | None
-    label: str
 
 
 @dataclass
@@ -57,48 +48,6 @@ class TipstrrMarketPick:
     reason: str
 
 
-TIPSTRR_MARKETS: tuple[TipstrrMarketSpec, ...] = (
-    TipstrrMarketSpec("1X2", "match_result", "full_time", "all", "home", None, "Gana local"),
-    TipstrrMarketSpec("1X2", "match_result", "full_time", "all", "draw", None, "Empate"),
-    TipstrrMarketSpec("1X2", "match_result", "full_time", "all", "away", None, "Gana visitante"),
-    TipstrrMarketSpec("Empate no apuesta", "draw_no_bet", "full_time", "all", "home", None, "Local empate no apuesta"),
-    TipstrrMarketSpec("Empate no apuesta", "draw_no_bet", "full_time", "all", "away", None, "Visitante empate no apuesta"),
-    TipstrrMarketSpec("Goles partido", "total_goals", "full_time", "all", "over", 3.0, "Mas de 3.0 goles"),
-    TipstrrMarketSpec("Goles partido", "total_goals", "full_time", "all", "under", 3.0, "Menos de 3.0 goles"),
-    TipstrrMarketSpec("Goles partido", "total_goals", "full_time", "all", "over", 3.25, "Mas de 3.25 goles"),
-    TipstrrMarketSpec("Goles partido", "total_goals", "full_time", "all", "under", 3.25, "Menos de 3.25 goles"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "1-0", None, "1-0"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "0-0", None, "0-0"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "0-1", None, "0-1"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "2-0", None, "2-0"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "1-1", None, "1-1"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "0-2", None, "0-2"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "2-1", None, "2-1"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "1-2", None, "1-2"),
-    TipstrrMarketSpec("Marcador correcto", "correct_score", "full_time", "all", "2-2", None, "2-2"),
-    TipstrrMarketSpec("Goles local", "total_goals", "full_time", "home", "over", 1.5, "Local mas de 1.5 goles"),
-    TipstrrMarketSpec("Goles local", "total_goals", "full_time", "home", "under", 1.5, "Local menos de 1.5 goles"),
-    TipstrrMarketSpec("Goles local", "total_goals", "full_time", "home", "over", 2.5, "Local mas de 2.5 goles"),
-    TipstrrMarketSpec("Goles local", "total_goals", "full_time", "home", "under", 2.5, "Local menos de 2.5 goles"),
-    TipstrrMarketSpec("Goles visitante", "total_goals", "full_time", "away", "over", 0.5, "Visitante mas de 0.5 goles"),
-    TipstrrMarketSpec("Goles visitante", "total_goals", "full_time", "away", "under", 0.5, "Visitante menos de 0.5 goles"),
-    TipstrrMarketSpec("Goles visitante", "total_goals", "full_time", "away", "over", 1.5, "Visitante mas de 1.5 goles"),
-    TipstrrMarketSpec("Goles visitante", "total_goals", "full_time", "away", "under", 1.5, "Visitante menos de 1.5 goles"),
-    TipstrrMarketSpec("1a parte local", "total_goals", "first_half", "home", "over", 0.5, "Local 1a parte mas de 0.5 goles"),
-    TipstrrMarketSpec("1a parte local", "total_goals", "first_half", "home", "under", 0.5, "Local 1a parte menos de 0.5 goles"),
-    TipstrrMarketSpec("1a parte visitante", "total_goals", "first_half", "away", "over", 0.5, "Visitante 1a parte mas de 0.5 goles"),
-    TipstrrMarketSpec("1a parte visitante", "total_goals", "first_half", "away", "under", 0.5, "Visitante 1a parte menos de 0.5 goles"),
-    TipstrrMarketSpec("Handicap asiatico", "asian_handicap", "full_time", "home", "handicap", -1.0, "Local -1.00"),
-    TipstrrMarketSpec("Handicap asiatico", "asian_handicap", "full_time", "away", "handicap", 1.0, "Visitante +1.00"),
-    TipstrrMarketSpec("Handicap asiatico", "asian_handicap", "full_time", "home", "handicap", -0.75, "Local -0.75"),
-    TipstrrMarketSpec("Handicap asiatico", "asian_handicap", "full_time", "away", "handicap", 0.75, "Visitante +0.75"),
-    TipstrrMarketSpec("Handicap asiatico 1a parte", "asian_handicap", "first_half", "home", "handicap", -0.5, "Local 1a parte -0.50"),
-    TipstrrMarketSpec("Handicap asiatico 1a parte", "asian_handicap", "first_half", "away", "handicap", 0.5, "Visitante 1a parte +0.50"),
-    TipstrrMarketSpec("Handicap asiatico 1a parte", "asian_handicap", "first_half", "home", "handicap", -0.25, "Local 1a parte -0.25"),
-    TipstrrMarketSpec("Handicap asiatico 1a parte", "asian_handicap", "first_half", "away", "handicap", 0.25, "Visitante 1a parte +0.25"),
-)
-
-
 def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | None = None) -> list[TipstrrMarketPick]:
     matches = queries.list_matches(db, match_date)
     rows: list[TipstrrMarketPick] = []
@@ -123,10 +72,50 @@ def _rows_for_match(db: Session, match: Match) -> list[TipstrrMarketPick]:
     away_form = queries.latest_team_form(db, match.away_team_id, match.competition_id)
     lambdas = estimate_goal_lambdas(home_form, away_form)
     odds_rows = list(db.scalars(select(Odds).where(Odds.match_id == match.id)))
-    return [_row_for_spec(match, lambdas, spec, _best_odd(odds_rows, spec)) for spec in TIPSTRR_MARKETS]
+    specs = merge_market_specs(base_market_catalog(), supported_market_specs_from_odds(odds_rows))
+    return [_row_for_spec(match, lambdas, spec, _best_odd(odds_rows, spec)) for spec in specs]
 
 
-def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: TipstrrMarketSpec, odd: Odds | None) -> TipstrrMarketPick:
+def build_tipstrr_predictions(db: Session, match: Match, system) -> list[Prediction]:
+    rows = _rows_for_match(db, match)
+    predictions: list[Prediction] = []
+    for row in rows:
+        predictions.append(
+            Prediction(
+                match_id=match.id,
+                system_id=system.id,
+                market=f"tipstrr:{row.family}:{row.period}:{row.team_scope}",
+                selection=row.selection,
+                line=row.line,
+                predicted_probability=row.model_probability,
+                fair_odds=row.fair_odds,
+                available_odds=row.market_odds,
+                expected_value=row.expected_value,
+                confidence=max(0.2, min(0.9, row.data_quality / 100)),
+                recommended_stake=2 if row.decision == "PUBLICABLE" and row.merlin_score >= 75 else 1,
+                explanation=row.reason,
+                feature_snapshot=json.dumps(
+                    {
+                        "group": row.group,
+                        "label": row.label,
+                        "family": row.family,
+                        "period": row.period,
+                        "team_scope": row.team_scope,
+                        "risk_level": row.risk_level,
+                        "data_quality": row.data_quality,
+                        "merlin_score": row.merlin_score,
+                        "bookmaker": row.bookmaker,
+                    },
+                    ensure_ascii=False,
+                ),
+                status="published" if row.decision == "PUBLICABLE" else "no_bet",
+                published_at=datetime.utcnow() if row.decision == "PUBLICABLE" else None,
+            )
+        )
+    return predictions
+
+
+def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odds | None) -> TipstrrMarketPick:
     distribution, model_probability, settlement_type = probability_for_market(
         spec.family,
         spec.period,
@@ -169,7 +158,7 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: TipstrrMarketSpec, o
 
 def _decision_for_market(
     match: Match,
-    spec: TipstrrMarketSpec,
+    spec: MarketSpec,
     odd: Odds | None,
     lambdas: GoalLambdas,
     expected_value: float | None,
@@ -182,8 +171,8 @@ def _decision_for_market(
         return "SIN_CUOTA", "Modelo disponible, falta cuota real del proveedor"
     if match.kickoff_at <= datetime.utcnow():
         return "WATCH", "Partido ya iniciado o cerrado"
-    if spec.family == "correct_score":
-        return "WATCH", "Marcador correcto se muestra para estudio, no para publicacion automatica"
+    if spec.family in {"correct_score", "first_goal", "qualification"}:
+        return "WATCH", "Mercado de alta varianza o contexto especial, no publicacion automatica"
     if _is_blocked_low_goal_publish(spec):
         return "WATCH", "Linea de goles bloqueada para publicacion"
     if lambdas.sample_size < 20 or lambdas.data_quality < 50:
@@ -195,14 +184,14 @@ def _decision_for_market(
     return "PUBLICABLE", "Valor positivo con cuota real"
 
 
-def _best_odd(odds_rows: list[Odds], spec: TipstrrMarketSpec) -> Odds | None:
+def _best_odd(odds_rows: list[Odds], spec: MarketSpec) -> Odds | None:
     candidates = [odd for odd in odds_rows if _odd_matches_spec(odd, spec)]
     if not candidates:
         return None
     return max(candidates, key=lambda odd: odd.odds)
 
 
-def _odd_matches_spec(odd: Odds, spec: TipstrrMarketSpec) -> bool:
+def _odd_matches_spec(odd: Odds, spec: MarketSpec) -> bool:
     family = odd.market_family or _legacy_family(odd.market)
     period = odd.period or "full_time"
     team_scope = odd.team_scope or "all"

@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta
 
 from app.models import Competition, Match, Odds, Team, TeamForm
+from app.services.collection_service import upsert_prediction_systems
+from app.repositories.queries import get_prediction_system
 from app.services.tipstrr_market_service import list_tipstrr_market_picks
+from app.services.tipstrr_market_service import build_tipstrr_predictions
 
 
 def test_tipstrr_market_picks_include_requested_market_groups(db):
@@ -12,7 +15,11 @@ def test_tipstrr_market_picks_include_requested_market_groups(db):
     groups = {row.group for row in rows}
     assert "1X2" in groups
     assert "Empate no apuesta" in groups
+    assert "Doble oportunidad" in groups
+    assert "Gana + ambos marcan" in groups
     assert "Goles partido" in groups
+    assert "Goles al descanso" in groups
+    assert "Resultado al descanso" in groups
     assert "Marcador correcto" in groups
     assert "Goles local" in groups
     assert "Goles visitante" in groups
@@ -20,6 +27,8 @@ def test_tipstrr_market_picks_include_requested_market_groups(db):
     assert "1a parte visitante" in groups
     assert "Handicap asiatico" in groups
     assert "Handicap asiatico 1a parte" in groups
+    assert "Primer gol" in groups
+    assert "Se clasificara" in groups
 
 
 def test_tipstrr_market_picks_find_publicable_real_odds(db):
@@ -43,8 +52,25 @@ def test_tipstrr_market_picks_find_publicable_real_odds(db):
 
     rows = list_tipstrr_market_picks(db, match.kickoff_at.date(), "PUBLICABLE")
 
-    assert any(row.group == "Goles partido" and row.label == "Mas de 3.0 goles" for row in rows)
+    assert any(row.group == "Goles partido" and row.family == "total_goals" and row.selection == "over" and row.line == 3.0 for row in rows)
     assert all(not (row.family == "total_goals" and row.team_scope == "all" and row.selection == "over" and row.line in {1.5, 2.5}) for row in rows)
+
+
+def test_tipstrr_generator_creates_prediction_rows_for_new_markets(db):
+    match = _create_match_with_forms(db)
+    upsert_prediction_systems(db)
+    system = get_prediction_system(db, "TIPSTRR_MARKET_ENGINE")
+
+    predictions = build_tipstrr_predictions(db, match, system)
+    markets = {prediction.market for prediction in predictions}
+
+    assert "tipstrr:match_result:full_time:all" in markets
+    assert "tipstrr:draw_no_bet:full_time:all" in markets
+    assert "tipstrr:double_chance:full_time:all" in markets
+    assert "tipstrr:asian_handicap:first_half:home" in markets
+    assert "tipstrr:win_btts:full_time:all" in markets
+    assert "tipstrr:first_goal:full_time:all" in markets
+    assert all(not (prediction.market == "tipstrr:total_goals:full_time:all" and prediction.selection == "over" and prediction.line in {1.5, 2.5}) for prediction in predictions if prediction.status == "published")
 
 
 def test_tipstrr_endpoint_returns_all_markets(client):
@@ -54,7 +80,7 @@ def test_tipstrr_endpoint_returns_all_markets(client):
     data = client.get("/api/tipstrr-market-picks").json()
 
     assert data
-    assert {"1X2", "Goles partido", "Marcador correcto"}.issubset({row["group"] for row in data})
+    assert {"1X2", "Doble oportunidad", "Goles partido", "Marcador correcto"}.issubset({row["group"] for row in data})
 
 
 def _create_match_with_forms(db):

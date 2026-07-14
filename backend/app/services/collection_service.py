@@ -22,6 +22,15 @@ INITIAL_SYSTEMS = [
     ("CORNERS_OVER_105", "Más de 10,5 córners", "Mercado secundario pendiente", "corners", 0.58, 0.03, False),
     ("HOME_WIN", "Gana local", "Mercado secundario pendiente", "result", 0.48, 0.03, False),
     ("AWAY_WIN", "Gana visitante", "Mercado secundario pendiente", "result", 0.42, 0.03, False),
+    (
+        "TIPSTRR_MARKET_ENGINE",
+        "Motor Tipstrr multi-mercado",
+        "Genera y evalua mercados tipo Tipstrr con probabilidad, cuota justa y EV",
+        "tipstrr",
+        0.0,
+        0.03,
+        True,
+    ),
 ]
 
 
