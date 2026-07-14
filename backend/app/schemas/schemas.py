@@ -238,8 +238,29 @@ class AdminStatusRead(BaseModel):
     data_quality_snapshots: int = 0
     cache_entries: int = 0
     model_audit_logs: int = 0
+    market_rankings: int = 0
+    publication_queue: int = 0
+    automation_runs: int = 0
+    historical_sync_windows: int = 0
+    calibration_runs: int = 0
+    provider_data_coverage: int = 0
     latest_sync_jobs: list[dict] = Field(default_factory=list)
     api_usage: list[dict] = Field(default_factory=list)
+
+
+class MarketRankingRead(BaseModel):
+    prediction_id: int
+    match_id: int
+    market: str
+    selection: str
+    line: float | None = None
+    rank_score: float
+    grade: str
+    publish_decision: str
+    expected_value: float | None = None
+    confidence: float | None = None
+    probability: float | None = None
+    ranked_at: str
 
 
 class StatisticsOverview(BaseModel):

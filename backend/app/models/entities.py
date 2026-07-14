@@ -501,6 +501,101 @@ class ModelAuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
 
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    engine: Mapped[str] = mapped_column(String(80), index=True)
+    task_name: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(60), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    records_processed: Mapped[int] = mapped_column(Integer, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    summary_json: Mapped[str | None] = mapped_column(Text)
+
+
+class HistoricalSyncWindow(TimestampMixin, Base):
+    __tablename__ = "historical_sync_windows"
+    __table_args__ = (UniqueConstraint("provider", "date_from", "date_to", "scope", name="uq_historical_sync_window"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(80), index=True)
+    scope: Mapped[str] = mapped_column(String(80), index=True)
+    date_from: Mapped[datetime] = mapped_column(DateTime, index=True)
+    date_to: Mapped[datetime] = mapped_column(DateTime, index=True)
+    status: Mapped[str] = mapped_column(String(60), default="pending", index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class ProviderDataCoverage(TimestampMixin, Base):
+    __tablename__ = "provider_data_coverage"
+    __table_args__ = (UniqueConstraint("provider", "entity_type", "data_type", "country", "competition_id", "season", name="uq_provider_coverage"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(80), index=True)
+    entity_type: Mapped[str] = mapped_column(String(80), index=True)
+    data_type: Mapped[str] = mapped_column(String(80), index=True)
+    country: Mapped[str | None] = mapped_column(String(120), index=True)
+    competition_id: Mapped[int | None] = mapped_column(ForeignKey("competitions.id"), index=True)
+    season: Mapped[str | None] = mapped_column(String(40), index=True)
+    available_count: Mapped[int] = mapped_column(Integer, default=0)
+    missing_count: Mapped[int] = mapped_column(Integer, default=0)
+    coverage_ratio: Mapped[float | None] = mapped_column(Float)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class MarketRanking(Base):
+    __tablename__ = "market_rankings"
+    __table_args__ = (UniqueConstraint("prediction_id", name="uq_market_ranking_prediction"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prediction_id: Mapped[int] = mapped_column(ForeignKey("predictions.id"), index=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    market: Mapped[str] = mapped_column(String(120), index=True)
+    selection: Mapped[str] = mapped_column(String(120), index=True)
+    line: Mapped[float | None] = mapped_column(Float)
+    rank_score: Mapped[float] = mapped_column(Float, index=True)
+    grade: Mapped[str] = mapped_column(String(10), index=True)
+    publish_decision: Mapped[str] = mapped_column(String(60), index=True)
+    factors_json: Mapped[str | None] = mapped_column(Text)
+    ranked_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class PublicationQueue(Base):
+    __tablename__ = "publication_queue"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prediction_id: Mapped[int | None] = mapped_column(ForeignKey("predictions.id"), index=True)
+    market_ranking_id: Mapped[int | None] = mapped_column(ForeignKey("market_rankings.id"), index=True)
+    channel: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(60), default="pending", index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100, index=True)
+    payload_json: Mapped[str | None] = mapped_column(Text)
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class CalibrationRun(Base):
+    __tablename__ = "calibration_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    model_name: Mapped[str] = mapped_column(String(120), index=True)
+    market: Mapped[str | None] = mapped_column(String(120), index=True)
+    sample_size: Mapped[int] = mapped_column(Integer, default=0)
+    brier_score: Mapped[float | None] = mapped_column(Float)
+    calibration_error: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(60), default="pending", index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    report_json: Mapped[str | None] = mapped_column(Text)
+
+
 class SyncJob(TimestampMixin, Base):
     __tablename__ = "sync_jobs"
 

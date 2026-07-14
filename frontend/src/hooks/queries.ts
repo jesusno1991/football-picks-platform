@@ -9,6 +9,7 @@ import {
   fetchMatchInfo,
   fetchMatchMarkets,
   fetchMatchOdds,
+  fetchMarketRankings,
   fetchMatches,
   fetchOverview,
   fetchPlayers,
@@ -19,6 +20,7 @@ import {
   fetchTeamDetail,
   fetchTeams,
   fetchTipstrrMarketPicks,
+  fetchUltimateReport,
 } from '../services/api'
 
 export function useMatches(date: string) {
@@ -54,6 +56,10 @@ export function useTipstrrMarketPicks(date: string, decision?: string) {
     queryKey: ['tipstrr-market-picks', date, decision ?? 'all'],
     queryFn: () => fetchTipstrrMarketPicks(date, decision),
   })
+}
+
+export function useMarketRankings() {
+  return useQuery({ queryKey: ['market-rankings'], queryFn: fetchMarketRankings })
 }
 
 export function useOverview() {
@@ -98,4 +104,8 @@ export function useSearch(q: string) {
 
 export function useAdminStatus() {
   return useQuery({ queryKey: ['admin-status'], queryFn: fetchAdminStatus })
+}
+
+export function useUltimateReport() {
+  return useQuery({ queryKey: ['ultimate-report'], queryFn: fetchUltimateReport })
 }

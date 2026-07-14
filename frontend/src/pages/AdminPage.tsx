@@ -1,7 +1,9 @@
-import { useAdminStatus } from '../hooks/queries'
+import { useAdminStatus, useMarketRankings, useUltimateReport } from '../hooks/queries'
 
 export function AdminPage() {
   const { data, isLoading } = useAdminStatus()
+  const { data: rankings = [] } = useMarketRankings()
+  const { data: report } = useUltimateReport()
   if (isLoading || !data) return <div className="card p-6">Cargando administracion...</div>
   const metrics = [
     ['Proveedor activo', data.active_provider],
@@ -21,6 +23,12 @@ export function AdminPage() {
     ['Calidad de datos', data.data_quality_snapshots],
     ['Cache', data.cache_entries],
     ['Auditoria IA', data.model_audit_logs],
+    ['Rankings mercado', data.market_rankings],
+    ['Cola publicacion', data.publication_queue],
+    ['Automatizaciones', data.automation_runs],
+    ['Ventanas historicas', data.historical_sync_windows],
+    ['Calibraciones', data.calibration_runs],
+    ['Cobertura proveedor', data.provider_data_coverage],
   ]
   return (
     <div className="space-y-4">
@@ -31,8 +39,10 @@ export function AdminPage() {
       <div className="grid gap-3 md:grid-cols-5">
         {metrics.map(([label, value]) => <div key={String(label)} className="card p-4"><div className="text-xs font-black text-slate-500">{label}</div><div className="mt-2 text-xl font-black">{String(value)}</div></div>)}
       </div>
+      <RawTable title="Ranking profesional de mercados" rows={rankings as unknown as Record<string, unknown>[]} empty="No disponible: ejecuta el ranking de mercados desde admin." />
       <RawTable title="Ultimas sincronizaciones" rows={data.latest_sync_jobs} empty="No disponible: no hay jobs registrados." />
       <RawTable title="Uso de API" rows={data.api_usage} empty="No disponible: no hay consumo registrado." />
+      <ReportBox report={report} />
     </div>
   )
 }
@@ -47,6 +57,18 @@ function RawTable({ title, rows, empty }: { title: string; rows: Record<string, 
         <thead className="text-left text-xs uppercase text-slate-500"><tr>{columns.map((column) => <th key={column} className="px-3 py-3">{column}</th>)}</tr></thead>
         <tbody>{rows.map((row, index) => <tr key={index} className="border-t border-slate-100">{columns.map((column) => <td key={column} className="px-3 py-3">{String(row[column] ?? 'No disponible')}</td>)}</tr>)}</tbody>
       </table>
+    </div>
+  )
+}
+
+function ReportBox({ report }: { report?: Record<string, unknown> }) {
+  if (!report) return null
+  return (
+    <div className="card p-5">
+      <h3 className="text-lg font-black">Informe de arquitectura</h3>
+      <pre className="mt-3 max-h-[360px] overflow-auto rounded-lg bg-slate-950 p-4 text-xs font-semibold text-slate-50">
+        {JSON.stringify(report, null, 2)}
+      </pre>
     </div>
   )
 }

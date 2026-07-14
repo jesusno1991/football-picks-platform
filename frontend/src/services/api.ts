@@ -6,6 +6,7 @@ import type {
   CompetitionDetail,
   GenericInfo,
   MarketEvaluation,
+  MarketRanking,
   Match,
   OddsRow,
   Overview,
@@ -66,6 +67,11 @@ export async function fetchTipstrrMarketPicks(date?: string, decision?: string) 
   return response.data
 }
 
+export async function fetchMarketRankings() {
+  const response = await api.get<MarketRanking[]>('/api/market-rankings')
+  return response.data
+}
+
 export async function fetchOverview() {
   const response = await api.get<Overview>('/api/statistics/overview')
   return response.data
@@ -113,6 +119,11 @@ export async function fetchSearch(q: string) {
 
 export async function fetchAdminStatus() {
   const response = await api.get<AdminStatus>('/api/admin/status')
+  return response.data
+}
+
+export async function fetchUltimateReport() {
+  const response = await api.get<Record<string, unknown>>('/api/admin/ultimate-report')
   return response.data
 }
 

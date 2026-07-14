@@ -212,6 +212,27 @@ export type AdminStatus = {
   data_quality_snapshots: number
   cache_entries: number
   model_audit_logs: number
+  market_rankings: number
+  publication_queue: number
+  automation_runs: number
+  historical_sync_windows: number
+  calibration_runs: number
+  provider_data_coverage: number
   latest_sync_jobs: Record<string, unknown>[]
   api_usage: Record<string, unknown>[]
+}
+
+export type MarketRanking = {
+  prediction_id: number
+  match_id: number
+  market: string
+  selection: string
+  line?: number | null
+  rank_score: number
+  grade: string
+  publish_decision: string
+  expected_value?: number | null
+  confidence?: number | null
+  probability?: number | null
+  ranked_at: string
 }

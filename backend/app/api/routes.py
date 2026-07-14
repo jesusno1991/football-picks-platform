@@ -11,15 +11,21 @@ from app.collectors.factory import get_provider
 from app.database import get_db, init_db
 from app.models import (
     CacheEntry,
+    AutomationRun,
+    CalibrationRun,
     Competition,
     DataQualitySnapshot,
+    HistoricalSyncWindow,
     Match,
+    MarketRanking,
     ModelAuditLog,
     Odds,
     Player,
     PlayerSeasonStatistic,
     Prediction,
     ProviderRawResponse,
+    ProviderDataCoverage,
+    PublicationQueue,
     Referee,
     SquadMember,
     Standing,
@@ -38,6 +44,7 @@ from app.schemas.schemas import (
     CompetitionDetailRead,
     GenericInfoRead,
     MarketEvaluationRead,
+    MarketRankingRead,
     MatchDetailRead,
     MatchListRead,
     OddsRead,
@@ -60,6 +67,7 @@ from app.services.statistics_service import (
     profit_curve,
 )
 from app.services.tipstrr_market_service import list_tipstrr_market_picks
+from app.services.ultimate_engine import foundation_report, list_rankings, rank_predictions
 from app.core.config import get_settings
 from app.utils.dates import local_date_from_utc_naive
 
@@ -318,6 +326,11 @@ def get_tipstrr_market_picks(
     target_date = match_date or date.today()
     _ensure_date_loaded(db, target_date)
     return list_tipstrr_market_picks(db, target_date, decision)
+
+
+@router.get("/market-rankings", response_model=list[MarketRankingRead])
+def get_market_rankings(limit: int = 100, db: Session = Depends(get_db)) -> list[MarketRankingRead]:
+    return [MarketRankingRead(**row) for row in list_rankings(db, limit)]
 
 
 @router.get("/competitions", response_model=list[CompetitionRead])
@@ -609,9 +622,20 @@ def admin_status(db: Session = Depends(get_db)) -> AdminStatusRead:
         data_quality_snapshots=int(db.scalar(select(func.count(DataQualitySnapshot.id))) or 0),
         cache_entries=int(db.scalar(select(func.count(CacheEntry.id))) or 0),
         model_audit_logs=int(db.scalar(select(func.count(ModelAuditLog.id))) or 0),
+        market_rankings=int(db.scalar(select(func.count(MarketRanking.id))) or 0),
+        publication_queue=int(db.scalar(select(func.count(PublicationQueue.id))) or 0),
+        automation_runs=int(db.scalar(select(func.count(AutomationRun.id))) or 0),
+        historical_sync_windows=int(db.scalar(select(func.count(HistoricalSyncWindow.id))) or 0),
+        calibration_runs=int(db.scalar(select(func.count(CalibrationRun.id))) or 0),
+        provider_data_coverage=int(db.scalar(select(func.count(ProviderDataCoverage.id))) or 0),
         latest_sync_jobs=jobs,
         api_usage=usage,
     )
+
+
+@router.get("/admin/ultimate-report")
+def admin_ultimate_report(db: Session = Depends(get_db)):
+    return foundation_report(db)
 
 
 @router.post("/admin/collect", dependencies=[Depends(require_admin)])
@@ -640,6 +664,11 @@ def admin_sync_day(match_date: date = Query(alias="date"), db: Session = Depends
 @router.post("/admin/generate-predictions", dependencies=[Depends(require_admin)])
 def admin_generate_predictions(db: Session = Depends(get_db)):
     return generate_predictions(db)
+
+
+@router.post("/admin/rank-markets", dependencies=[Depends(require_admin)])
+def admin_rank_markets(limit: int = 500, db: Session = Depends(get_db)):
+    return rank_predictions(db, limit)
 
 
 @router.post("/admin/verify-results", dependencies=[Depends(require_admin)])
