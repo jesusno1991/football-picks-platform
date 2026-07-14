@@ -2,21 +2,29 @@ import calendar
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
 from app.collectors.factory import get_provider
 from app.database import get_db, init_db
-from app.models import Competition, Match, Odds, Prediction, SystemPerformance, Team, TeamForm, TeamMatchStatistics
+from app.models import Competition, Match, Odds, Player, Prediction, ProviderRawResponse, Standing, SyncJob, SystemPerformance, Team, TeamForm, TeamMatchStatistics
 from app.repositories import queries
 from app.schemas.schemas import (
+    AdminStatusRead,
     CalendarDayRead,
     CompetitionRead,
+    CompetitionDetailRead,
+    GenericInfoRead,
     MarketEvaluationRead,
     MatchDetailRead,
     MatchListRead,
+    OddsRead,
     PredictionRead,
+    SearchResultRead,
+    StandingRowRead,
+    TeamDetailRead,
     TeamRead,
     TipstrrMarketPickRead,
 )
@@ -62,6 +70,27 @@ def get_matches(
     if match_date:
         _ensure_date_loaded(db, match_date)
     matches = queries.list_matches(db, match_date, country, competition_id, team)
+    pick_counts = queries.pick_counts_by_match(db)
+    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+
+
+@router.get("/matches/live", response_model=list[MatchListRead])
+def get_live_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
+    matches = [match for match in queries.list_matches(db) if _is_live_status(match.status)]
+    pick_counts = queries.pick_counts_by_match(db)
+    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+
+
+@router.get("/matches/upcoming", response_model=list[MatchListRead])
+def get_upcoming_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
+    matches = [match for match in queries.list_matches(db) if match.status in {"scheduled", "not_started", "NS", "TBD"}][:100]
+    pick_counts = queries.pick_counts_by_match(db)
+    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+
+
+@router.get("/matches/results", response_model=list[MatchListRead])
+def get_result_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
+    matches = [match for match in queries.list_matches(db) if match.status in {"finished", "FT", "AET", "PEN"}][:100]
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
 
@@ -122,7 +151,135 @@ def get_match(match_id: int, db: Session = Depends(get_db)) -> MatchDetailRead:
         home_form=queries.latest_team_form(db, match.home_team_id, match.competition_id),
         away_form=queries.latest_team_form(db, match.away_team_id, match.competition_id),
         predictions=match.predictions,
+        availability=_match_availability(db, match.id),
     )
+
+
+@router.get("/matches/{match_id}/statistics", response_model=GenericInfoRead)
+def get_match_statistics(match_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_match(db, match_id):
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    rows = []
+    for row in queries.list_match_statistics(db, match_id):
+        rows.append(
+            {
+                "team_id": row.team_id,
+                "is_home": row.is_home,
+                "posesion": row.possession,
+                "tiros": row.shots,
+                "tiros_a_puerta": row.shots_on_target,
+                "corners": row.corners,
+                "ataques_peligrosos": row.dangerous_attacks,
+                "goles": row.goals,
+                "xg": row.xg,
+                "amarillas": row.yellow_cards,
+                "rojas": row.red_cards,
+            }
+        )
+    return _generic(rows)
+
+
+@router.get("/matches/{match_id}/events", response_model=GenericInfoRead)
+def get_match_events(match_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_match(db, match_id):
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    rows = [
+        {
+            "minuto": event.minute,
+            "extra": event.extra_minute,
+            "equipo_id": event.team_id,
+            "jugador_id": event.player_id,
+            "asistente_id": event.assist_player_id,
+            "tipo": event.event_type,
+            "detalle": event.detail,
+            "marcador": f"{event.score_home}-{event.score_away}" if event.score_home is not None and event.score_away is not None else "No disponible",
+            "proveedor": event.source_provider,
+        }
+        for event in queries.list_match_events(db, match_id)
+    ]
+    return _generic(rows)
+
+
+@router.get("/matches/{match_id}/lineups", response_model=GenericInfoRead)
+def get_match_lineups(match_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_match(db, match_id):
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    rows = [
+        {
+            "equipo_id": row.team_id,
+            "jugador_id": row.player_id,
+            "entrenador_id": row.coach_id,
+            "formacion": row.formation,
+            "tipo": row.line_type,
+            "posicion": row.position,
+            "dorsal": row.shirt_number,
+            "capitan": row.is_captain,
+            "valoracion": row.rating,
+            "proveedor": row.source_provider,
+        }
+        for row in queries.list_match_lineups(db, match_id)
+    ]
+    return _generic(rows)
+
+
+@router.get("/matches/{match_id}/player-statistics", response_model=GenericInfoRead)
+def get_match_player_statistics(match_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_match(db, match_id):
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    rows = [
+        {
+            "equipo_id": row.team_id,
+            "jugador_id": row.player_id,
+            "minutos": row.minutes,
+            "goles": row.goals,
+            "asistencias": row.assists,
+            "tiros": row.shots,
+            "tiros_a_puerta": row.shots_on_target,
+            "pases": row.passes,
+            "precision_pase": row.pass_accuracy,
+            "xg": row.xg,
+            "xa": row.xa,
+            "valoracion": row.rating,
+            "proveedor": row.source_provider,
+        }
+        for row in queries.list_match_player_statistics(db, match_id)
+    ]
+    return _generic(rows)
+
+
+@router.get("/matches/{match_id}/odds", response_model=list[OddsRead])
+def get_match_odds(match_id: int, db: Session = Depends(get_db)) -> list[OddsRead]:
+    if not queries.get_match(db, match_id):
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    return [OddsRead.model_validate(odd, from_attributes=True) for odd in queries.list_match_odds(db, match_id)]
+
+
+@router.get("/matches/{match_id}/predictions", response_model=list[PredictionRead])
+def get_match_predictions(match_id: int, db: Session = Depends(get_db)) -> list[PredictionRead]:
+    match = queries.get_match(db, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    return match.predictions
+
+
+@router.get("/matches/{match_id}/h2h", response_model=GenericInfoRead)
+def get_match_h2h(match_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    match = queries.get_match(db, match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    rows = [
+        {
+            "id": item.id,
+            "fecha": item.kickoff_at.isoformat(),
+            "local": item.home_team.name,
+            "visitante": item.away_team.name,
+            "marcador": _score_label(item),
+            "competicion": item.competition.name,
+        }
+        for item in queries.list_matches(db)
+        if {item.home_team_id, item.away_team_id} == {match.home_team_id, match.away_team_id} and item.id != match.id
+    ][:10]
+    return _generic(rows)
 
 
 @router.get("/matches/{match_id}/markets", response_model=list[MarketEvaluationRead])
@@ -148,12 +305,197 @@ def get_competitions(db: Session = Depends(get_db)):
     return queries.list_competitions(db)
 
 
+@router.get("/competitions/{competition_id}", response_model=CompetitionDetailRead)
+def get_competition(competition_id: int, db: Session = Depends(get_db)) -> CompetitionDetailRead:
+    competition = queries.get_competition(db, competition_id)
+    if not competition:
+        raise HTTPException(status_code=404, detail="Competicion no encontrada")
+    pick_counts = queries.pick_counts_by_match(db)
+    upcoming = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_competition_matches(db, competition_id, before=False, limit=8)]
+    recent = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_competition_matches(db, competition_id, before=True, limit=8)]
+    return CompetitionDetailRead(
+        **CompetitionRead.model_validate(competition).model_dump(),
+        match_count=len(queries.list_competition_matches(db, competition_id, limit=500)),
+        teams_count=queries.count_competition_teams(db, competition_id),
+        next_matches=upcoming,
+        recent_results=recent,
+        standings_available=bool(queries.list_standings(db, competition_id)),
+        picks_count=queries.count_competition_picks(db, competition_id),
+    )
+
+
+@router.get("/competitions/{competition_id}/matches", response_model=list[MatchListRead])
+def get_competition_matches(competition_id: int, db: Session = Depends(get_db)) -> list[MatchListRead]:
+    if not queries.get_competition(db, competition_id):
+        raise HTTPException(status_code=404, detail="Competicion no encontrada")
+    pick_counts = queries.pick_counts_by_match(db)
+    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_competition_matches(db, competition_id, limit=100)]
+
+
+@router.get("/competitions/{competition_id}/standings", response_model=list[StandingRowRead])
+def get_competition_standings(competition_id: int, db: Session = Depends(get_db)) -> list[StandingRowRead]:
+    if not queries.get_competition(db, competition_id):
+        raise HTTPException(status_code=404, detail="Competicion no encontrada")
+    return [_standing_read(db, row) for row in queries.list_standings(db, competition_id)]
+
+
+@router.get("/competitions/{competition_id}/teams", response_model=list[TeamRead])
+def get_competition_teams(competition_id: int, db: Session = Depends(get_db)) -> list[TeamRead]:
+    if not queries.get_competition(db, competition_id):
+        raise HTTPException(status_code=404, detail="Competicion no encontrada")
+    team_ids: set[int] = set()
+    for match in queries.list_competition_matches(db, competition_id, limit=1000):
+        team_ids.add(match.home_team_id)
+        team_ids.add(match.away_team_id)
+    teams = [db.get(Team, team_id) for team_id in sorted(team_ids)]
+    return [TeamRead.model_validate(team) for team in teams if team]
+
+
+@router.get("/competitions/{competition_id}/statistics", response_model=GenericInfoRead)
+def get_competition_statistics(competition_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    competition = queries.get_competition(db, competition_id)
+    if not competition:
+        raise HTTPException(status_code=404, detail="Competicion no encontrada")
+    matches = queries.list_competition_matches(db, competition_id, limit=1000)
+    finished = [match for match in matches if match.home_score is not None and match.away_score is not None]
+    goals = sum((match.home_score or 0) + (match.away_score or 0) for match in finished)
+    rows = [{
+        "partidos": len(matches),
+        "finalizados": len(finished),
+        "media_goles": round(goals / len(finished), 2) if finished else None,
+        "picks": queries.count_competition_picks(db, competition_id),
+        "temporada": competition.season,
+    }]
+    return GenericInfoRead(available=True, message="Disponible", rows=rows)
+
+
+@router.get("/competitions/{competition_id}/players", response_model=GenericInfoRead)
+def get_competition_players(competition_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_competition(db, competition_id):
+        raise HTTPException(status_code=404, detail="Competicion no encontrada")
+    return GenericInfoRead(available=False, message="No disponible: el proveedor aun no ha sincronizado jugadores de esta competicion", rows=[])
+
+
+@router.get("/teams", response_model=list[TeamRead])
+def get_teams(q: str | None = None, db: Session = Depends(get_db)):
+    return queries.list_teams(db, q)
+
+
 @router.get("/teams/{team_id}", response_model=TeamRead)
 def get_team(team_id: int, db: Session = Depends(get_db)):
     team = queries.get_team(db, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
     return team
+
+
+@router.get("/teams/{team_id}/detail", response_model=TeamDetailRead)
+def get_team_detail(team_id: int, db: Session = Depends(get_db)) -> TeamDetailRead:
+    team = queries.get_team(db, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    pick_counts = queries.pick_counts_by_match(db)
+    recent = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_team_matches(db, team_id, before=True)]
+    upcoming = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_team_matches(db, team_id, before=False)]
+    form = queries.latest_any_team_form(db, team_id)
+    statistics = {
+        "muestra": form.matches_sample if form else None,
+        "goles_favor_media": form.goals_for_avg if form else None,
+        "goles_contra_media": form.goals_against_avg if form else None,
+        "corners_favor_media": form.corners_for_avg if form else None,
+        "over_9_5_corners": form.over_9_5_corners_rate if form else None,
+    }
+    return TeamDetailRead(
+        **TeamRead.model_validate(team).model_dump(),
+        recent_matches=recent,
+        upcoming_matches=upcoming,
+        form=form,
+        injuries=GenericInfoRead(available=False, message="No disponible: lesiones no sincronizadas todavia", rows=[]),
+        squad=GenericInfoRead(available=False, message="No disponible: plantilla no sincronizada todavia", rows=[]),
+        statistics=statistics,
+    )
+
+
+@router.get("/teams/{team_id}/matches", response_model=list[MatchListRead])
+def get_team_matches(team_id: int, db: Session = Depends(get_db)) -> list[MatchListRead]:
+    if not queries.get_team(db, team_id):
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    pick_counts = queries.pick_counts_by_match(db)
+    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_team_matches(db, team_id, limit=100)]
+
+
+@router.get("/teams/{team_id}/statistics", response_model=GenericInfoRead)
+def get_team_statistics(team_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    team = queries.get_team(db, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    form = queries.latest_any_team_form(db, team_id)
+    if not form:
+        return GenericInfoRead(available=False, message="No disponible: estadisticas historicas no sincronizadas", rows=[])
+    return GenericInfoRead(available=True, message="Disponible", rows=[TeamDetailRead.model_fields["statistics"].default_factory() if False else {
+        "muestra": form.matches_sample,
+        "goles_favor_media": form.goals_for_avg,
+        "goles_contra_media": form.goals_against_avg,
+        "tiros_media": form.shots_avg,
+        "tiros_puerta_media": form.shots_on_target_avg,
+        "posesion_media": form.possession_avg,
+        "btts": form.btts_rate,
+        "over_1_5": form.over_1_5_goals_rate,
+        "over_2_5": form.over_2_5_goals_rate,
+    }])
+
+
+@router.get("/teams/{team_id}/squad", response_model=GenericInfoRead)
+def get_team_squad(team_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_team(db, team_id):
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    players = db.scalars(select(Player).where(Player.current_team_id == team_id).order_by(Player.name)).all()
+    rows = [{"id": player.id, "nombre": player.name, "posicion": player.position, "nacionalidad": player.nationality} for player in players]
+    return _generic(rows, empty_message="No disponible: plantilla no sincronizada todavia")
+
+
+@router.get("/teams/{team_id}/injuries", response_model=GenericInfoRead)
+def get_team_injuries(team_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_team(db, team_id):
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    return GenericInfoRead(available=False, message="No disponible: lesiones no sincronizadas todavia", rows=[])
+
+
+@router.get("/players", response_model=list[dict])
+def get_players(q: str | None = None, db: Session = Depends(get_db)) -> list[dict]:
+    return [_player_read(player) for player in queries.list_players(db, q)]
+
+
+@router.get("/players/{player_id}", response_model=dict)
+def get_player(player_id: int, db: Session = Depends(get_db)) -> dict:
+    player = queries.get_player(db, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Jugador no encontrado")
+    return _player_read(player)
+
+
+@router.get("/players/{player_id}/statistics", response_model=GenericInfoRead)
+def get_player_statistics(player_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_player(db, player_id):
+        raise HTTPException(status_code=404, detail="Jugador no encontrado")
+    return GenericInfoRead(available=False, message="No disponible: estadisticas de jugador no sincronizadas todavia", rows=[])
+
+
+@router.get("/players/{player_id}/matches", response_model=GenericInfoRead)
+def get_player_matches(player_id: int, db: Session = Depends(get_db)) -> GenericInfoRead:
+    if not queries.get_player(db, player_id):
+        raise HTTPException(status_code=404, detail="Jugador no encontrado")
+    return GenericInfoRead(available=False, message="No disponible: partidos de jugador no sincronizados todavia", rows=[])
+
+
+@router.get("/standings", response_model=list[StandingRowRead])
+def get_standings(competition_id: int | None = None, db: Session = Depends(get_db)) -> list[StandingRowRead]:
+    return [_standing_read(db, row) for row in queries.list_standings(db, competition_id)]
+
+
+@router.get("/search", response_model=list[SearchResultRead])
+def search(q: str = Query(min_length=2), db: Session = Depends(get_db)) -> list[SearchResultRead]:
+    return [SearchResultRead(**row) for row in queries.search_all(db, q)]
 
 
 @router.get("/predictions", response_model=list[PredictionRead])
@@ -200,6 +542,49 @@ def statistics_competitions(db: Session = Depends(get_db)):
 @router.get("/statistics/profit-curve")
 def statistics_profit_curve(db: Session = Depends(get_db)):
     return profit_curve(db)
+
+
+@router.get("/admin/status", response_model=AdminStatusRead)
+def admin_status(db: Session = Depends(get_db)) -> AdminStatusRead:
+    settings = get_settings()
+    provider = get_provider()
+    jobs = [
+        {
+            "id": job.id,
+            "tipo": job.job_type,
+            "proveedor": job.provider,
+            "estado": job.status,
+            "procesados": job.records_processed,
+            "errores": job.error_count,
+            "mensaje": job.message,
+        }
+        for job in queries.list_sync_jobs(db)
+    ]
+    usage = [
+        {
+            "proveedor": row.provider,
+            "endpoint": row.endpoint,
+            "peticiones": row.requests_count,
+            "ok": row.success_count,
+            "errores": row.error_count,
+            "restante": row.rate_limit_remaining,
+        }
+        for row in queries.list_api_usage(db)
+    ]
+    return AdminStatusRead(
+        active_provider=provider.__class__.__name__,
+        api_football_configured=bool(settings.api_football_key),
+        flashscore_configured=bool(settings.rapidapi_key),
+        matches=int(db.scalar(select(func.count(Match.id))) or 0),
+        competitions=int(db.scalar(select(func.count(Competition.id))) or 0),
+        teams=int(db.scalar(select(func.count(Team.id))) or 0),
+        players=int(db.scalar(select(func.count(Player.id))) or 0),
+        standings_rows=int(db.scalar(select(func.count(Standing.id))) or 0),
+        raw_responses=int(db.scalar(select(func.count(ProviderRawResponse.id))) or 0),
+        mappings_unmatched=queries.count_unmatched_mappings(db),
+        latest_sync_jobs=jobs,
+        api_usage=usage,
+    )
 
 
 @router.post("/admin/collect", dependencies=[Depends(require_admin)])
@@ -252,6 +637,8 @@ def _match_list_read(match, pick_count: int) -> MatchListRead:
         external_id=match.external_id,
         kickoff_at=match.kickoff_at,
         status=match.status,
+        home_score=match.home_score,
+        away_score=match.away_score,
         venue=match.venue,
         round=match.round,
         season=match.season,
@@ -263,6 +650,63 @@ def _match_list_read(match, pick_count: int) -> MatchListRead:
         best_odds=best.available_odds if best else None,
         confidence=best.confidence if best else None,
     )
+
+
+def _match_availability(db: Session, match_id: int) -> dict[str, str]:
+    return {
+        "estadisticas": "Disponible" if queries.list_match_statistics(db, match_id) else "No disponible",
+        "eventos": "Disponible" if queries.list_match_events(db, match_id) else "No disponible",
+        "alineaciones": "Disponible" if queries.list_match_lineups(db, match_id) else "No disponible",
+        "cuotas": "Disponible" if queries.list_match_odds(db, match_id) else "No disponible",
+        "predicciones": "Disponible",
+        "picks": "Disponible",
+    }
+
+
+def _generic(rows: list[dict], empty_message: str = "No disponible") -> GenericInfoRead:
+    return GenericInfoRead(available=bool(rows), message="Disponible" if rows else empty_message, rows=rows)
+
+
+def _standing_read(db: Session, row) -> StandingRowRead:
+    team = db.get(Team, row.team_id)
+    return StandingRowRead(
+        rank=row.rank,
+        team_id=row.team_id,
+        team_name=team.name if team else "No disponible",
+        played=row.played,
+        wins=row.wins,
+        draws=row.draws,
+        losses=row.losses,
+        goals_for=row.goals_for,
+        goals_against=row.goals_against,
+        goal_difference=row.goal_difference,
+        points=row.points,
+        form=row.form,
+        group_name=row.group_name,
+        source_provider=row.source_provider,
+    )
+
+
+def _player_read(player: Player) -> dict:
+    return {
+        "id": player.id,
+        "external_id": player.external_id,
+        "nombre": player.name,
+        "nacionalidad": player.nationality or "No disponible",
+        "posicion": player.position or "No disponible",
+        "foto": player.photo_url,
+        "equipo_actual_id": player.current_team_id,
+    }
+
+
+def _score_label(match: Match) -> str:
+    if match.home_score is None or match.away_score is None:
+        return "No disponible"
+    return f"{match.home_score}-{match.away_score}"
+
+
+def _is_live_status(status: str | None) -> bool:
+    return (status or "").lower() in {"live", "1h", "2h", "ht", "et", "p", "in_play"}
 
 
 def _ensure_date_loaded(db: Session, match_date: date) -> None:

@@ -8,7 +8,7 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
   const { data = [], isLoading } = usePredictions(onlyPublishable ? 'published' : undefined, date)
 
   const shiftDate = (days: number) => {
-    const next = new Date(date)
+    const next = new Date(`${date}T12:00:00`)
     next.setDate(next.getDate() + days)
     setDate(formatDateInput(next))
   }
@@ -17,28 +17,26 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
     <div className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-black">{onlyPublishable ? 'Picks para publicar' : 'Picks prepartido'}</h1>
+          <h1 className="text-2xl font-black">{onlyPublishable ? 'Picks para publicar' : 'Predicciones'}</h1>
           <p className="text-sm font-semibold text-slate-500">
             {onlyPublishable
-              ? 'Solo aparecen las señales válidas para publicar. Over 1.5 y Over 2.5 están bloqueados.'
-              : 'Señales generadas antes del inicio, incluyendo candidatos y descartes.'}
+              ? 'Solo aparecen las senales validas para publicar. Over 1.5 y Over 2.5 estan bloqueados.'
+              : 'Predicciones generadas antes del inicio, incluyendo candidatos y descartes.'}
           </p>
         </div>
         <div className="card flex flex-wrap items-center gap-2 p-2">
           <button className="rounded-lg border border-line px-3 py-2 text-sm font-bold" onClick={() => shiftDate(-1)}>Ayer</button>
           <button className="rounded-lg bg-brand px-3 py-2 text-sm font-bold text-white" onClick={() => setDate(formatDateInput(new Date()))}>Hoy</button>
-          <button className="rounded-lg border border-line px-3 py-2 text-sm font-bold" onClick={() => shiftDate(1)}>Mañana</button>
+          <button className="rounded-lg border border-line px-3 py-2 text-sm font-bold" onClick={() => shiftDate(1)}>Manana</button>
           <input className="rounded-lg border border-line px-3 py-2 text-sm font-bold" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </div>
       </div>
       {isLoading ? <div className="card p-4 font-bold text-slate-600">Cargando datos reales de la fecha...</div> : null}
       {!isLoading && data.length === 0 ? (
         <div className="card p-5 text-sm font-semibold text-slate-600">
-          {onlyPublishable ? 'No hay picks marcados para publicar en esta fecha.' : 'No hay picks generados para esta fecha.'}
+          {onlyPublishable ? 'No hay picks marcados para publicar en esta fecha.' : 'No hay predicciones generadas para esta fecha.'}
         </div>
-      ) : (
-        <PredictionTable predictions={data} />
-      )}
+      ) : <PredictionTable predictions={data} />}
     </div>
   )
 }

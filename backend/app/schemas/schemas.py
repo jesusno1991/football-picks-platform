@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TeamRead(BaseModel):
@@ -33,6 +33,8 @@ class MatchListRead(BaseModel):
     external_id: str
     kickoff_at: datetime
     status: str
+    home_score: int | None = None
+    away_score: int | None = None
     venue: str | None = None
     round: str | None = None
     season: str
@@ -148,7 +150,89 @@ class TipstrrMarketPickRead(BaseModel):
 class MatchDetailRead(MatchListRead):
     home_form: TeamFormRead | None = None
     away_form: TeamFormRead | None = None
-    predictions: list[PredictionRead] = []
+    predictions: list[PredictionRead] = Field(default_factory=list)
+    availability: dict[str, str] = Field(default_factory=dict)
+
+
+class DataAvailabilityRead(BaseModel):
+    status: str
+    message: str = "No disponible"
+
+
+class GenericInfoRead(BaseModel):
+    available: bool
+    message: str = "No disponible"
+    rows: list[dict] = Field(default_factory=list)
+
+
+class OddsRead(BaseModel):
+    bookmaker: str
+    market: str
+    selection: str
+    line: float | None = None
+    odds: float
+    provider: str | None = None
+    period: str | None = None
+    team_scope: str | None = None
+    collected_at: datetime | None = None
+
+
+class TeamDetailRead(TeamRead):
+    recent_matches: list[MatchListRead] = Field(default_factory=list)
+    upcoming_matches: list[MatchListRead] = Field(default_factory=list)
+    form: TeamFormRead | None = None
+    injuries: GenericInfoRead
+    squad: GenericInfoRead
+    statistics: dict[str, float | int | str | None] = Field(default_factory=dict)
+
+
+class CompetitionDetailRead(CompetitionRead):
+    match_count: int
+    teams_count: int
+    next_matches: list[MatchListRead] = Field(default_factory=list)
+    recent_results: list[MatchListRead] = Field(default_factory=list)
+    standings_available: bool = False
+    picks_count: int = 0
+
+
+class StandingRowRead(BaseModel):
+    rank: int | None = None
+    team_id: int | None = None
+    team_name: str
+    played: int | None = None
+    wins: int | None = None
+    draws: int | None = None
+    losses: int | None = None
+    goals_for: int | None = None
+    goals_against: int | None = None
+    goal_difference: int | None = None
+    points: int | None = None
+    form: str | None = None
+    group_name: str | None = None
+    source_provider: str | None = None
+
+
+class SearchResultRead(BaseModel):
+    type: str
+    id: int
+    title: str
+    subtitle: str | None = None
+    url: str
+
+
+class AdminStatusRead(BaseModel):
+    active_provider: str
+    api_football_configured: bool
+    flashscore_configured: bool
+    matches: int
+    competitions: int
+    teams: int
+    players: int
+    standings_rows: int
+    raw_responses: int
+    mappings_unmatched: int
+    latest_sync_jobs: list[dict] = Field(default_factory=list)
+    api_usage: list[dict] = Field(default_factory=list)
 
 
 class StatisticsOverview(BaseModel):

@@ -13,8 +13,8 @@ export function formatDateInput(date: Date) {
 }
 
 export function marketLabel(market: string, selection?: string, line?: number | null) {
-  if (market === 'corners' && selection === 'over') return `Más de ${line} córners`
-  if (market === 'goals' && selection === 'over') return `Más de ${line} goles`
+  if (market === 'corners' && selection === 'over') return `Mas de ${line} corners`
+  if (market === 'goals' && selection === 'over') return `Mas de ${line} goles`
   if (market === 'btts' && selection === 'yes') return 'Ambos equipos marcan'
   return market
 }

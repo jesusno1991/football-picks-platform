@@ -1,5 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchCalendarMonth, fetchMatch, fetchMatches, fetchMatchMarkets, fetchOverview, fetchPredictions, fetchProfitCurve, fetchTipstrrMarketPicks } from '../services/api'
+import {
+  fetchAdminStatus,
+  fetchCalendarMonth,
+  fetchCompetition,
+  fetchCompetitions,
+  fetchCompetitionStandings,
+  fetchMatch,
+  fetchMatchInfo,
+  fetchMatchMarkets,
+  fetchMatchOdds,
+  fetchMatches,
+  fetchOverview,
+  fetchPlayers,
+  fetchPredictions,
+  fetchProfitCurve,
+  fetchSearch,
+  fetchStandings,
+  fetchTeamDetail,
+  fetchTeams,
+  fetchTipstrrMarketPicks,
+} from '../services/api'
 
 export function useMatches(date: string) {
   return useQuery({ queryKey: ['matches', date], queryFn: () => fetchMatches(date) })
@@ -15,6 +35,14 @@ export function useMatch(id?: number) {
 
 export function useMatchMarkets(id?: number) {
   return useQuery({ queryKey: ['match-markets', id], queryFn: () => fetchMatchMarkets(id!), enabled: Boolean(id) })
+}
+
+export function useMatchInfo(id: number | undefined, section: 'statistics' | 'events' | 'lineups' | 'player-statistics' | 'h2h') {
+  return useQuery({ queryKey: ['match-info', id, section], queryFn: () => fetchMatchInfo(id!, section), enabled: Boolean(id) })
+}
+
+export function useMatchOdds(id?: number) {
+  return useQuery({ queryKey: ['match-odds', id], queryFn: () => fetchMatchOdds(id!), enabled: Boolean(id) })
 }
 
 export function usePredictions(status?: string, date?: string) {
@@ -34,4 +62,40 @@ export function useOverview() {
 
 export function useProfitCurve() {
   return useQuery({ queryKey: ['profit-curve'], queryFn: fetchProfitCurve })
+}
+
+export function useCompetitions() {
+  return useQuery({ queryKey: ['competitions'], queryFn: fetchCompetitions })
+}
+
+export function useCompetition(id?: number) {
+  return useQuery({ queryKey: ['competition', id], queryFn: () => fetchCompetition(id!), enabled: Boolean(id) })
+}
+
+export function useCompetitionStandings(id?: number) {
+  return useQuery({ queryKey: ['competition-standings', id], queryFn: () => fetchCompetitionStandings(id!), enabled: Boolean(id) })
+}
+
+export function useTeams(q?: string) {
+  return useQuery({ queryKey: ['teams', q ?? 'all'], queryFn: () => fetchTeams(q) })
+}
+
+export function useTeamDetail(id?: number) {
+  return useQuery({ queryKey: ['team-detail', id], queryFn: () => fetchTeamDetail(id!), enabled: Boolean(id) })
+}
+
+export function usePlayers(q?: string) {
+  return useQuery({ queryKey: ['players', q ?? 'all'], queryFn: () => fetchPlayers(q) })
+}
+
+export function useStandings(competitionId?: number) {
+  return useQuery({ queryKey: ['standings', competitionId ?? 'all'], queryFn: () => fetchStandings(competitionId) })
+}
+
+export function useSearch(q: string) {
+  return useQuery({ queryKey: ['search', q], queryFn: () => fetchSearch(q), enabled: q.trim().length >= 2 })
+}
+
+export function useAdminStatus() {
+  return useQuery({ queryKey: ['admin-status'], queryFn: fetchAdminStatus })
 }

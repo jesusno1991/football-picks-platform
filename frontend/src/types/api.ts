@@ -94,6 +94,8 @@ export type Match = {
   external_id: string
   kickoff_at: string
   status: string
+  home_score?: number | null
+  away_score?: number | null
   venue?: string | null
   round?: string | null
   season: string
@@ -107,6 +109,7 @@ export type Match = {
   predictions?: Prediction[]
   home_form?: Record<string, number | string | null>
   away_form?: Record<string, number | string | null>
+  availability?: Record<string, string>
 }
 
 export type CalendarDay = {
@@ -128,4 +131,80 @@ export type Overview = {
   average_odds: number
   total_stake: number
   maximum_drawdown: number
+}
+
+export type GenericInfo = {
+  available: boolean
+  message: string
+  rows: Record<string, unknown>[]
+}
+
+export type OddsRow = {
+  bookmaker: string
+  market: string
+  selection: string
+  line?: number | null
+  odds: number
+  provider?: string | null
+  period?: string | null
+  team_scope?: string | null
+  collected_at?: string | null
+}
+
+export type TeamDetail = Team & {
+  recent_matches: Match[]
+  upcoming_matches: Match[]
+  form?: Record<string, number | string | null> | null
+  injuries: GenericInfo
+  squad: GenericInfo
+  statistics: Record<string, number | string | null>
+}
+
+export type CompetitionDetail = Competition & {
+  match_count: number
+  teams_count: number
+  next_matches: Match[]
+  recent_results: Match[]
+  standings_available: boolean
+  picks_count: number
+}
+
+export type StandingRow = {
+  rank?: number | null
+  team_id?: number | null
+  team_name: string
+  played?: number | null
+  wins?: number | null
+  draws?: number | null
+  losses?: number | null
+  goals_for?: number | null
+  goals_against?: number | null
+  goal_difference?: number | null
+  points?: number | null
+  form?: string | null
+  group_name?: string | null
+  source_provider?: string | null
+}
+
+export type SearchResult = {
+  type: string
+  id: number
+  title: string
+  subtitle?: string | null
+  url: string
+}
+
+export type AdminStatus = {
+  active_provider: string
+  api_football_configured: boolean
+  flashscore_configured: boolean
+  matches: number
+  competitions: number
+  teams: number
+  players: number
+  standings_rows: number
+  raw_responses: number
+  mappings_unmatched: number
+  latest_sync_jobs: Record<string, unknown>[]
+  api_usage: Record<string, unknown>[]
 }

@@ -1,5 +1,21 @@
 import axios from 'axios'
-import type { CalendarDay, MarketEvaluation, Match, Overview, Prediction, TipstrrMarketPick } from '../types/api'
+import type {
+  AdminStatus,
+  CalendarDay,
+  Competition,
+  CompetitionDetail,
+  GenericInfo,
+  MarketEvaluation,
+  Match,
+  OddsRow,
+  Overview,
+  Prediction,
+  SearchResult,
+  StandingRow,
+  Team,
+  TeamDetail,
+  TipstrrMarketPick,
+} from '../types/api'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
@@ -30,6 +46,16 @@ export async function fetchMatchMarkets(id: number) {
   return response.data
 }
 
+export async function fetchMatchInfo(id: number, section: 'statistics' | 'events' | 'lineups' | 'player-statistics' | 'h2h') {
+  const response = await api.get<GenericInfo>(`/api/matches/${id}/${section}`)
+  return response.data
+}
+
+export async function fetchMatchOdds(id: number) {
+  const response = await api.get<OddsRow[]>(`/api/matches/${id}/odds`)
+  return response.data
+}
+
 export async function fetchPredictions(status?: string, date?: string) {
   const response = await api.get<Prediction[]>('/api/predictions', { params: { status, date } })
   return response.data
@@ -42,6 +68,51 @@ export async function fetchTipstrrMarketPicks(date?: string, decision?: string) 
 
 export async function fetchOverview() {
   const response = await api.get<Overview>('/api/statistics/overview')
+  return response.data
+}
+
+export async function fetchCompetitions() {
+  const response = await api.get<Competition[]>('/api/competitions')
+  return response.data
+}
+
+export async function fetchCompetition(id: number) {
+  const response = await api.get<CompetitionDetail>(`/api/competitions/${id}`)
+  return response.data
+}
+
+export async function fetchCompetitionStandings(id: number) {
+  const response = await api.get<StandingRow[]>(`/api/competitions/${id}/standings`)
+  return response.data
+}
+
+export async function fetchTeams(q?: string) {
+  const response = await api.get<Team[]>('/api/teams', { params: { q } })
+  return response.data
+}
+
+export async function fetchTeamDetail(id: number) {
+  const response = await api.get<TeamDetail>(`/api/teams/${id}/detail`)
+  return response.data
+}
+
+export async function fetchPlayers(q?: string) {
+  const response = await api.get<Record<string, unknown>[]>('/api/players', { params: { q } })
+  return response.data
+}
+
+export async function fetchStandings(competitionId?: number) {
+  const response = await api.get<StandingRow[]>('/api/standings', { params: { competition_id: competitionId } })
+  return response.data
+}
+
+export async function fetchSearch(q: string) {
+  const response = await api.get<SearchResult[]>('/api/search', { params: { q } })
+  return response.data
+}
+
+export async function fetchAdminStatus() {
+  const response = await api.get<AdminStatus>('/api/admin/status')
   return response.data
 }
 

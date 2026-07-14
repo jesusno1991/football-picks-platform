@@ -112,6 +112,42 @@ def test_match_detail_contains_forms_and_predictions(client):
     data = detail.json()
     assert data["home_form"]["matches_sample"] >= 10
     assert "predictions" in data
+    assert data["availability"]["predicciones"] == "Disponible"
+
+
+def test_information_platform_endpoints_are_available(client):
+    client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
+    client.post("/api/admin/generate-predictions", headers={"X-Admin-Token": "test-secret"})
+    match = client.get("/api/matches").json()[0]
+    team_id = match["home_team"]["id"]
+    competition_id = match["competition"]["id"]
+
+    assert client.get(f"/api/matches/{match['id']}/statistics").status_code == 200
+    assert client.get(f"/api/matches/{match['id']}/events").json()["message"] == "No disponible"
+    assert client.get(f"/api/matches/{match['id']}/lineups").json()["message"] == "No disponible"
+    assert client.get(f"/api/matches/{match['id']}/odds").status_code == 200
+    assert client.get(f"/api/matches/{match['id']}/predictions").status_code == 200
+    assert client.get(f"/api/matches/{match['id']}/h2h").status_code == 200
+
+    team_detail = client.get(f"/api/teams/{team_id}/detail")
+    assert team_detail.status_code == 200
+    assert team_detail.json()["name"]
+
+    competition_detail = client.get(f"/api/competitions/{competition_id}")
+    assert competition_detail.status_code == 200
+    assert competition_detail.json()["match_count"] >= 1
+
+    standings = client.get(f"/api/competitions/{competition_id}/standings")
+    assert standings.status_code == 200
+    assert isinstance(standings.json(), list)
+
+    search = client.get("/api/search", params={"q": match["home_team"]["name"][:3]})
+    assert search.status_code == 200
+    assert search.json()
+
+    admin = client.get("/api/admin/status")
+    assert admin.status_code == 200
+    assert admin.json()["matches"] >= 1
 
 
 def test_statistics_overview_empty_is_safe(client):
