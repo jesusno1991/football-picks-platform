@@ -123,7 +123,9 @@ def list_rankings(db: Session, limit: int = 100) -> list[dict]:
                 "ranked_at": ranking.ranked_at.isoformat(),
             }
         )
-    return result
+    if result:
+        return result
+    return _live_rankings_from_predictions(db, limit)
 
 
 def foundation_report(db: Session) -> dict:
@@ -217,6 +219,37 @@ def _publish_decision(prediction: Prediction, grade: str, score: float) -> str:
     if grade in {"S+", "S", "A"} and (prediction.expected_value or 0) > 0:
         return "WATCH"
     return "NO_PUBLICAR"
+
+
+def _live_rankings_from_predictions(db: Session, limit: int) -> list[dict]:
+    rows = db.execute(
+        select(Prediction, Match)
+        .join(Match, Match.id == Prediction.match_id)
+        .where(Prediction.predicted_probability.is_not(None))
+        .order_by(Prediction.generated_at.desc())
+        .limit(limit)
+    ).all()
+    result = []
+    for prediction, match in rows:
+        score = _ranking_score(prediction)
+        grade = _grade(score)
+        result.append(
+            {
+                "prediction_id": prediction.id,
+                "match_id": match.id,
+                "market": prediction.market,
+                "selection": prediction.selection,
+                "line": prediction.line,
+                "rank_score": round(score, 2),
+                "grade": grade,
+                "publish_decision": _publish_decision(prediction, grade, score),
+                "expected_value": prediction.expected_value,
+                "confidence": prediction.confidence,
+                "probability": prediction.predicted_probability,
+                "ranked_at": datetime.utcnow().isoformat(),
+            }
+        )
+    return sorted(result, key=lambda item: item["rank_score"], reverse=True)
 
 
 def _count(db: Session, model) -> int:
