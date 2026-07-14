@@ -1,4 +1,5 @@
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Match, Prediction
@@ -71,6 +72,7 @@ def generate_predictions(db: Session) -> dict[str, int]:
                     except IntegrityError:
                         db.rollback()
                         skipped += 1
+        _select_best_market_for_match(db, match.id)
     db.commit()
     return {"created": created, "updated": updated, "skipped": skipped}
 
@@ -100,8 +102,6 @@ def _build_prediction(db: Session, match: Match, predictor, system) -> Predictio
 
 
 def _find_existing(db: Session, prediction: Prediction) -> Prediction | None:
-    from sqlalchemy import select
-
     return db.scalar(
         select(Prediction).where(
             Prediction.match_id == prediction.match_id,
@@ -111,3 +111,52 @@ def _find_existing(db: Session, prediction: Prediction) -> Prediction | None:
             Prediction.line == prediction.line,
         )
     )
+
+
+def _select_best_market_for_match(db: Session, match_id: int) -> None:
+    predictions = list(db.scalars(select(Prediction).where(Prediction.match_id == match_id)))
+    publishable = [prediction for prediction in predictions if _is_publishable_market_candidate(prediction)]
+    if not publishable:
+        for prediction in predictions:
+            if prediction.status == "published":
+                prediction.status = "no_bet"
+                prediction.published_at = None
+                prediction.explanation = _append_optimizer_reason(prediction.explanation, "No publicado: no supera el filtro global de EV/liquidez.")
+        return
+
+    publishable.sort(
+        key=lambda prediction: (
+            prediction.expected_value or -999,
+            prediction.confidence or 0,
+            prediction.predicted_probability or 0,
+        ),
+        reverse=True,
+    )
+    best = publishable[0]
+    for prediction in predictions:
+        if prediction.id == best.id or prediction is best:
+            prediction.status = "published"
+            prediction.explanation = _append_optimizer_reason(prediction.explanation, "Mercado optimo del partido por EV.")
+            continue
+        if prediction.status == "published":
+            prediction.status = "no_bet"
+            prediction.published_at = None
+            prediction.explanation = _append_optimizer_reason(prediction.explanation, "No publicado: existe otro mercado del partido con mayor EV.")
+
+
+def _is_publishable_market_candidate(prediction: Prediction) -> bool:
+    if prediction.available_odds is None or prediction.available_odds < 1.25 or prediction.available_odds > 8:
+        return False
+    if prediction.expected_value is None or prediction.expected_value <= 0.03:
+        return False
+    if prediction.predicted_probability is None:
+        return False
+    if prediction.market == "goals" and prediction.selection == "over" and prediction.line in {1.5, 2.5}:
+        return False
+    return prediction.status == "published"
+
+
+def _append_optimizer_reason(explanation: str, reason: str) -> str:
+    if reason in explanation:
+        return explanation
+    return f"{explanation} {reason}"

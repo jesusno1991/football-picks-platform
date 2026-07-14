@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 
-from app.models import Competition, Match, Odds, Team, TeamForm
+from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team, TeamForm
 from app.services.collection_service import upsert_prediction_systems
 from app.repositories.queries import get_prediction_system
+from app.services.prediction_service import _select_best_market_for_match
 from app.services.tipstrr_market_service import list_tipstrr_market_picks
 from app.services.tipstrr_market_service import build_tipstrr_predictions
 
@@ -81,6 +82,69 @@ def test_tipstrr_endpoint_returns_all_markets(client):
 
     assert data
     assert {"1X2", "Doble oportunidad", "Goles partido", "Marcador correcto"}.issubset({row["group"] for row in data})
+
+
+def test_market_optimizer_keeps_only_best_ev_per_match(db):
+    match = _create_match_with_forms(db)
+    system = PredictionSystem(
+        code="TEST_MARKET_OPTIMIZER",
+        name="Test optimizer",
+        description="test",
+        market="tipstrr",
+        minimum_probability=0,
+        minimum_value=0.03,
+        is_active=True,
+    )
+    db.add(system)
+    db.flush()
+    low_ev = Prediction(
+        match_id=match.id,
+        system_id=system.id,
+        market="tipstrr:total_goals:full_time:all",
+        selection="over",
+        line=3.0,
+        predicted_probability=0.55,
+        fair_odds=1.82,
+        available_odds=2.0,
+        expected_value=0.08,
+        confidence=0.72,
+        recommended_stake=1,
+        explanation="low",
+        status="published",
+    )
+    high_ev = Prediction(
+        match_id=match.id,
+        system_id=system.id,
+        market="tipstrr:asian_handicap:full_time:home",
+        selection="handicap",
+        line=-0.75,
+        predicted_probability=0.58,
+        fair_odds=1.72,
+        available_odds=2.2,
+        expected_value=0.18,
+        confidence=0.7,
+        recommended_stake=1,
+        explanation="high",
+        status="published",
+    )
+    db.add_all([low_ev, high_ev])
+    db.commit()
+
+    _select_best_market_for_match(db, match.id)
+    db.commit()
+
+    assert high_ev.status == "published"
+    assert low_ev.status == "no_bet"
+    assert "mayor EV" in low_ev.explanation
+
+
+def test_generate_predictions_publishes_max_one_market_per_match(client):
+    client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
+    client.post("/api/admin/generate-predictions", headers={"X-Admin-Token": "test-secret"})
+
+    predictions = client.get("/api/predictions", params={"status": "published"}).json()
+    match_ids = [prediction["match_id"] for prediction in predictions]
+    assert len(match_ids) == len(set(match_ids))
 
 
 def _create_match_with_forms(db):
