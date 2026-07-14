@@ -35,6 +35,33 @@ export type Prediction = {
   match?: Match | null
 }
 
+export type MarketEvaluation = {
+  code: string
+  family: string
+  period: string
+  team_scope: string
+  selection: string
+  line?: number | null
+  settlement_type: string
+  probability_full_win: number
+  probability_half_win: number
+  probability_push: number
+  probability_half_loss: number
+  probability_full_loss: number
+  model_probability?: number | null
+  fair_odds?: number | null
+  market_odds?: number | null
+  bookmaker?: string | null
+  expected_value?: number | null
+  merlin_score: number
+  data_quality: number
+  risk_level: string
+  validation_status: string
+  decision: string
+  reasons: string[]
+  alerts: string[]
+}
+
 export type Match = {
   id: number
   external_id: string

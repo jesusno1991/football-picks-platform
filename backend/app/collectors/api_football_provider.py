@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from typing import Any
 
@@ -33,11 +34,8 @@ class ApiFootballProvider(FootballDataProvider):
 
     def get_match(self, match_id: str) -> dict[str, Any] | None:
         fixture_id = _strip_prefix(match_id, "api-football-")
-        payload = self._request("/fixtures", {"id": fixture_id})
-        rows = _responses(payload)
-        if not rows:
-            return None
-        return self._normalize_match(rows[0], date.today())
+        rows = _responses(self._request("/fixtures", {"id": fixture_id}))
+        return self._normalize_match(rows[0], date.today()) if rows else None
 
     def get_team_history(self, team_id: str) -> dict[str, Any]:
         api_team_id = _strip_prefix(team_id, "api-football-team-")
@@ -46,17 +44,14 @@ class ApiFootballProvider(FootballDataProvider):
 
     def get_match_statistics(self, match_id: str) -> list[dict[str, Any]]:
         fixture_id = _strip_prefix(match_id, "api-football-")
-        payload = self._request("/fixtures/statistics", {"fixture": fixture_id})
-        return _responses(payload)
+        return _responses(self._request("/fixtures/statistics", {"fixture": fixture_id}))
 
     def get_odds(self, match_id: str) -> list[dict[str, Any]]:
         fixture_id = _strip_prefix(match_id, "api-football-")
-        payload = self._request("/odds", {"fixture": fixture_id})
-        return _odds_from_payload(_responses(payload))
+        return _odds_from_payload(_responses(self._request("/odds", {"fixture": fixture_id})))
 
     def get_results(self, match_date: date) -> list[dict[str, Any]]:
-        payload = self._request("/fixtures", {"date": match_date.isoformat(), "status": "FT-AET-PEN"})
-        return _responses(payload)
+        return _responses(self._request("/fixtures", {"date": match_date.isoformat(), "status": "FT-AET-PEN"}))
 
     def diagnostics(self, match_date: date) -> dict[str, Any]:
         try:
@@ -164,15 +159,8 @@ def _history_from_fixtures(fixtures: list[dict[str, Any]], team_id: str) -> dict
     if not sample:
         return _empty_history()
 
-    goals_for = 0
-    goals_against = 0
-    first_half_goals = 0
-    second_half_goals = 0
-    over_15 = 0
-    over_25 = 0
-    over_35 = 0
-    btts = 0
-    clean_sheets = 0
+    goals_for = goals_against = first_half_goals = second_half_goals = 0
+    over_15 = over_25 = over_35 = btts = clean_sheets = 0
 
     for item in finished:
         teams = item.get("teams") or {}
@@ -183,9 +171,7 @@ def _history_from_fixtures(fixtures: list[dict[str, Any]], team_id: str) -> dict
         opponent_goals = _to_int(goals.get("away" if is_home else "home")) or 0
         total_goals = team_goals + opponent_goals
         halftime = score.get("halftime") or {}
-        first_half_home = _to_int(halftime.get("home")) or 0
-        first_half_away = _to_int(halftime.get("away")) or 0
-        first_half_total = first_half_home + first_half_away
+        first_half_total = (_to_int(halftime.get("home")) or 0) + (_to_int(halftime.get("away")) or 0)
 
         goals_for += team_goals
         goals_against += opponent_goals
@@ -245,8 +231,10 @@ def _empty_history() -> dict[str, Any]:
 
 def _odds_from_payload(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     odds: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, float | None]] = set()
+    seen: set[tuple[str, str, str, str, float | None, str]] = set()
     for fixture_odds in rows:
+        fixture_id = str((fixture_odds.get("fixture") or {}).get("id") or "")
+        provider_competition_id = str((fixture_odds.get("league") or {}).get("id") or "")
         for bookmaker in fixture_odds.get("bookmakers") or []:
             bookmaker_name = str(bookmaker.get("name") or "API-Football")
             for bet in bookmaker.get("bets") or []:
@@ -255,11 +243,30 @@ def _odds_from_payload(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     normalized = _normalize_odd_value(bet_name, value)
                     if not normalized:
                         continue
-                    key = (normalized["market"], normalized["selection"], normalized["line"])
+                    key = (
+                        normalized["market_family"],
+                        normalized["period"],
+                        normalized["team_scope"],
+                        normalized["selection"],
+                        normalized["line"],
+                        bookmaker_name,
+                    )
                     if key in seen:
                         continue
                     seen.add(key)
-                    odds.append({"bookmaker": bookmaker_name, **normalized})
+                    odds.append(
+                        {
+                            "provider": "api_football",
+                            "bookmaker": bookmaker_name,
+                            "event_id": fixture_id,
+                            "fixture_id": fixture_id,
+                            "provider_competition_id": provider_competition_id,
+                            "market_name_raw": bet_name,
+                            "raw_payload": json.dumps({"bet": bet_name, "value": value}, ensure_ascii=False),
+                            "validation_status": "mapped",
+                            **normalized,
+                        }
+                    )
     return odds
 
 
@@ -271,14 +278,69 @@ def _normalize_odd_value(bet_name: str, value: dict[str, Any]) -> dict[str, Any]
 
     bet_lower = bet_name.lower()
     selection_lower = selection_name.lower()
-    if "both teams" in bet_lower and selection_lower in {"yes", "si", "sí"}:
-        return {"market": "btts", "selection": "yes", "line": None, "odds": odd}
+    if bet_lower in {"match winner", "1x2", "fulltime result"} or "match winner" in bet_lower:
+        selection = {"home": "home", "1": "home", "draw": "draw", "x": "draw", "away": "away", "2": "away"}.get(selection_lower)
+        if selection:
+            return _odd("result", "match_result", "full_time", "all", selection, None, odd)
 
-    if ("over/under" in bet_lower or "goals over" in bet_lower or "total goals" in bet_lower) and selection_lower.startswith("over"):
+    if "double chance" in bet_lower:
+        selection = {"1X": "1x", "X2": "x2", "12": "12"}.get(selection_name.upper().replace(" ", ""))
+        if selection:
+            return _odd("double_chance", "double_chance", "full_time", "all", selection, None, odd)
+
+    if "draw no bet" in bet_lower:
+        selection = {"home": "home", "1": "home", "away": "away", "2": "away"}.get(selection_lower)
+        if selection:
+            return _odd("draw_no_bet", "draw_no_bet", "full_time", "all", selection, None, odd)
+
+    if "both teams" in bet_lower and selection_lower in {"yes", "no", "si", "sí", "sÃ­"}:
+        selection = "yes" if selection_lower in {"yes", "si", "sí", "sÃ­"} else "no"
+        return _odd("btts", "btts", _period_from_bet(bet_lower), "all", selection, None, odd)
+
+    if "over/under" in bet_lower or "goals over" in bet_lower or "total goals" in bet_lower:
         line = _line_from_selection(selection_name)
-        if line in {1.5, 2.5, 3.5}:
-            return {"market": "goals", "selection": "over", "line": line, "odds": odd}
+        if line is not None and selection_lower.startswith(("over", "under")):
+            selection = "over" if selection_lower.startswith("over") else "under"
+            team_scope = _team_scope_from_bet(bet_lower)
+            legacy_market = "team_goals" if team_scope in {"home", "away"} else "goals"
+            return _odd(legacy_market, "total_goals", _period_from_bet(bet_lower), team_scope, selection, line, odd)
     return None
+
+
+def _odd(
+    legacy_market: str,
+    market_family: str,
+    period: str,
+    team_scope: str,
+    selection: str,
+    line: float | None,
+    odds: float,
+) -> dict[str, Any]:
+    return {
+        "market": legacy_market,
+        "market_family": market_family,
+        "period": period,
+        "team_scope": team_scope,
+        "selection": selection,
+        "line": line,
+        "odds": odds,
+    }
+
+
+def _period_from_bet(bet_lower: str) -> str:
+    if "1st half" in bet_lower or "first half" in bet_lower or "1st period" in bet_lower:
+        return "first_half"
+    if "2nd half" in bet_lower or "second half" in bet_lower or "2nd period" in bet_lower:
+        return "second_half"
+    return "full_time"
+
+
+def _team_scope_from_bet(bet_lower: str) -> str:
+    if "home team" in bet_lower or "home goals" in bet_lower or "team 1" in bet_lower:
+        return "home"
+    if "away team" in bet_lower or "away goals" in bet_lower or "team 2" in bet_lower:
+        return "away"
+    return "all"
 
 
 def _line_from_selection(value: str) -> float | None:

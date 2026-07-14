@@ -69,8 +69,6 @@ class Predictor(ABC):
 
 
 def stake_from_confidence(confidence: float) -> float:
-    if confidence >= 0.75:
-        return 3
-    if confidence >= 0.62:
+    if confidence >= 0.82:
         return 2
     return 1

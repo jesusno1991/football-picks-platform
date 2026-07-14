@@ -128,9 +128,12 @@ def collect_mock_data(db: Session, match_date: date | None = None) -> dict[str, 
             existing = db.scalar(
                 select(Odds).where(
                     Odds.match_id == match.id,
+                    Odds.bookmaker == odd["bookmaker"],
                     Odds.market == odd["market"],
                     Odds.selection == odd["selection"],
                     Odds.line == odd["line"],
+                    Odds.period == odd.get("period"),
+                    Odds.team_scope == odd.get("team_scope"),
                 )
             )
             if not existing:

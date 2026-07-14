@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Match, Overview, Prediction } from '../types/api'
+import type { MarketEvaluation, Match, Overview, Prediction } from '../types/api'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
@@ -12,6 +12,11 @@ export async function fetchMatches(date?: string) {
 
 export async function fetchMatch(id: number) {
   const response = await api.get<Match>(`/api/matches/${id}`)
+  return response.data
+}
+
+export async function fetchMatchMarkets(id: number) {
+  const response = await api.get<MarketEvaluation[]>(`/api/matches/${id}/markets`)
   return response.data
 }
 

@@ -129,8 +129,135 @@ class Odds(Base):
     selection: Mapped[str] = mapped_column(String(120), index=True)
     line: Mapped[float | None] = mapped_column(Float)
     odds: Mapped[float] = mapped_column(Float)
+    provider: Mapped[str | None] = mapped_column(String(80), index=True)
+    event_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    fixture_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    provider_competition_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    market_family: Mapped[str | None] = mapped_column(String(80), index=True)
+    market_name_raw: Mapped[str | None] = mapped_column(String(180))
+    period: Mapped[str | None] = mapped_column(String(40), index=True)
+    team_scope: Mapped[str | None] = mapped_column(String(40), index=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text)
+    validation_status: Mapped[str | None] = mapped_column(String(60), default="mapped")
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
     is_closing_odds: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class MarketDefinition(TimestampMixin, Base):
+    __tablename__ = "market_definitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "family",
+            "period",
+            "team_scope",
+            "selection",
+            "line",
+            "settlement_type",
+            name="uq_market_definition_logic",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    family: Mapped[str] = mapped_column(String(80), index=True)
+    period: Mapped[str] = mapped_column(String(40), index=True)
+    team_scope: Mapped[str] = mapped_column(String(40), index=True)
+    selection: Mapped[str] = mapped_column(String(80), index=True)
+    line: Mapped[float | None] = mapped_column(Float)
+    settlement_type: Mapped[str] = mapped_column(String(80), index=True)
+    is_supported: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_publishable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+
+class ModelProbability(Base):
+    __tablename__ = "model_probabilities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    market_definition_id: Mapped[int] = mapped_column(ForeignKey("market_definitions.id"), index=True)
+    probability_full_win: Mapped[float | None] = mapped_column(Float)
+    probability_half_win: Mapped[float | None] = mapped_column(Float)
+    probability_push: Mapped[float | None] = mapped_column(Float)
+    probability_half_loss: Mapped[float | None] = mapped_column(Float)
+    probability_full_loss: Mapped[float | None] = mapped_column(Float)
+    model_probability: Mapped[float | None] = mapped_column(Float)
+    fair_odds: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    model_name: Mapped[str] = mapped_column(String(120), default="poisson_goal_matrix_v1")
+    feature_snapshot: Mapped[str | None] = mapped_column(Text)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class MarketEvaluation(Base):
+    __tablename__ = "market_evaluations"
+    __table_args__ = (UniqueConstraint("match_id", "market_definition_id", "bookmaker", name="uq_market_eval_bookmaker"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    fixture_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    market_definition_id: Mapped[int] = mapped_column(ForeignKey("market_definitions.id"), index=True)
+    probability_full_win: Mapped[float | None] = mapped_column(Float)
+    probability_half_win: Mapped[float | None] = mapped_column(Float)
+    probability_push: Mapped[float | None] = mapped_column(Float)
+    probability_half_loss: Mapped[float | None] = mapped_column(Float)
+    probability_full_loss: Mapped[float | None] = mapped_column(Float)
+    fair_odds: Mapped[float | None] = mapped_column(Float)
+    market_odds: Mapped[float | None] = mapped_column(Float)
+    expected_value: Mapped[float | None] = mapped_column(Float)
+    bookmaker: Mapped[str | None] = mapped_column(String(120), index=True)
+    merlin_score: Mapped[float | None] = mapped_column(Float)
+    data_quality: Mapped[float | None] = mapped_column(Float)
+    risk_level: Mapped[str | None] = mapped_column(String(40), index=True)
+    validation_status: Mapped[str] = mapped_column(String(60), default="pending_validation", index=True)
+    decision: Mapped[str] = mapped_column(String(60), default="pending_validation", index=True)
+    reasons: Mapped[str | None] = mapped_column(Text)
+    alerts: Mapped[str | None] = mapped_column(Text)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class PredictionFeature(Base):
+    __tablename__ = "prediction_features"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prediction_id: Mapped[int | None] = mapped_column(ForeignKey("predictions.id"), index=True)
+    market_evaluation_id: Mapped[int | None] = mapped_column(ForeignKey("market_evaluations.id"), index=True)
+    features_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+
+class PredictionResult(Base):
+    __tablename__ = "prediction_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prediction_id: Mapped[int] = mapped_column(ForeignKey("predictions.id"), index=True)
+    settlement_status: Mapped[str] = mapped_column(String(40), index=True)
+    profit_units: Mapped[float | None] = mapped_column(Float)
+    settled_score_home: Mapped[int | None] = mapped_column(Integer)
+    settled_score_away: Mapped[int | None] = mapped_column(Integer)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class SettlementRule(Base):
+    __tablename__ = "settlement_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    settlement_type: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ModelCalibration(Base):
+    __tablename__ = "model_calibrations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    model_name: Mapped[str] = mapped_column(String(120), index=True)
+    market_family: Mapped[str] = mapped_column(String(80), index=True)
+    period: Mapped[str] = mapped_column(String(40), index=True)
+    sample_size: Mapped[int] = mapped_column(Integer, default=0)
+    brier_score: Mapped[float | None] = mapped_column(Float)
+    calibration_error: Mapped[float | None] = mapped_column(Float)
+    is_production_validated: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class PredictionSystem(TimestampMixin, Base):

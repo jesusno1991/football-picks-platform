@@ -84,6 +84,33 @@ class PredictionRead(BaseModel):
     match: MatchListRead | None = None
 
 
+class MarketEvaluationRead(BaseModel):
+    code: str
+    family: str
+    period: str
+    team_scope: str
+    selection: str
+    line: float | None = None
+    settlement_type: str
+    probability_full_win: float
+    probability_half_win: float
+    probability_push: float
+    probability_half_loss: float
+    probability_full_loss: float
+    model_probability: float | None = None
+    fair_odds: float | None = None
+    market_odds: float | None = None
+    bookmaker: str | None = None
+    expected_value: float | None = None
+    merlin_score: float
+    data_quality: float
+    risk_level: str
+    validation_status: str
+    decision: str
+    reasons: list[str]
+    alerts: list[str]
+
+
 class MatchDetailRead(MatchListRead):
     home_form: TeamFormRead | None = None
     away_form: TeamFormRead | None = None

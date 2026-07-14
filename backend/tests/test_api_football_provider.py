@@ -130,5 +130,13 @@ def test_api_football_maps_goal_odds(monkeypatch):
     monkeypatch.setattr("app.collectors.api_football_provider.httpx.get", fake_get)
     odds = ApiFootballProvider().get_odds("api-football-123")
 
-    assert {"bookmaker": "Bet365", "market": "goals", "selection": "over", "line": 1.5, "odds": 1.7} in odds
-    assert {"bookmaker": "Bet365", "market": "btts", "selection": "yes", "line": None, "odds": 1.95} in odds
+    goals = [odd for odd in odds if odd["market"] == "goals" and odd["selection"] == "over" and odd["line"] == 1.5][0]
+    btts = [odd for odd in odds if odd["market"] == "btts" and odd["selection"] == "yes"][0]
+    assert goals["bookmaker"] == "Bet365"
+    assert goals["market_family"] == "total_goals"
+    assert goals["period"] == "full_time"
+    assert goals["team_scope"] == "all"
+    assert goals["odds"] == 1.7
+    assert btts["bookmaker"] == "Bet365"
+    assert btts["market_family"] == "btts"
+    assert btts["odds"] == 1.95

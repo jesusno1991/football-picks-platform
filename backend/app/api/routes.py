@@ -9,8 +9,9 @@ from app.collectors.factory import get_provider
 from app.database import get_db, init_db
 from app.models import Competition, Match, Odds, Prediction, SystemPerformance, Team, TeamForm, TeamMatchStatistics
 from app.repositories import queries
-from app.schemas.schemas import CompetitionRead, MatchDetailRead, MatchListRead, PredictionRead, TeamRead
+from app.schemas.schemas import CompetitionRead, MarketEvaluationRead, MatchDetailRead, MatchListRead, PredictionRead, TeamRead
 from app.services.collection_service import collect_mock_data, collect_schedule_data
+from app.services.goal_market_engine import evaluate_match_markets
 from app.services.prediction_service import generate_predictions
 from app.services.settlement_service import verify_results
 from app.services.statistics_service import (
@@ -64,6 +65,13 @@ def get_match(match_id: int, db: Session = Depends(get_db)) -> MatchDetailRead:
         away_form=queries.latest_team_form(db, match.away_team_id, match.competition_id),
         predictions=match.predictions,
     )
+
+
+@router.get("/matches/{match_id}/markets", response_model=list[MarketEvaluationRead])
+def get_match_markets(match_id: int, db: Session = Depends(get_db)) -> list[MarketEvaluationRead]:
+    if not queries.get_match(db, match_id):
+        raise HTTPException(status_code=404, detail="Partido no encontrado")
+    return evaluate_match_markets(db, match_id)
 
 
 @router.get("/competitions", response_model=list[CompetitionRead])
