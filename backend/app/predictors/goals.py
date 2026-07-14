@@ -5,6 +5,9 @@ from app.models import Match, Odds, TeamForm
 from app.predictors.base import PredictionDraft, Predictor, stake_from_confidence
 
 
+BLOCKED_PUBLISH_GOAL_LINES = {1.5, 2.5}
+
+
 class GoalsMarketPredictor(Predictor):
     def __init__(
         self,
@@ -110,7 +113,13 @@ class GoalsMarketPredictor(Predictor):
             published_at=None,
         )
         draft.feature_snapshot = json.dumps(features, ensure_ascii=False)  # type: ignore[attr-defined]
-        if self.should_publish(draft, match, system, features):
+        if self.market == "goals" and self.selection == "over" and self.line in BLOCKED_PUBLISH_GOAL_LINES:
+            draft.status = "no_bet"
+            draft.explanation = (
+                f"NO BET: Over {self.line} queda bloqueado para publicacion por configuracion. "
+                "Se calcula como referencia, pero no aparece en picks para publicar."
+            )
+        elif self.should_publish(draft, match, system, features):
             draft.status = "published"
             draft.published_at = datetime.utcnow()
         elif features.get("data_status") != "ok":
