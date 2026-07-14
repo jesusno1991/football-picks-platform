@@ -1,15 +1,26 @@
-import { useMemo, useState } from 'react'
-import { CalendarDays } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { MatchCard } from '../components/MatchCard'
 import { MatchDetailPage } from './MatchDetailPage'
-import { useMatches } from '../hooks/queries'
+import { useCalendarMonth, useMatches } from '../hooks/queries'
 import { formatDateInput } from '../utils/format'
 
+function dateFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const value = params.get('date')
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : formatDateInput(new Date())
+}
+
 export function HomePage() {
-  const [date, setDate] = useState(formatDateInput(new Date()))
-  const { data: matches = [], isLoading } = useMatches(date)
+  const [date, setDateState] = useState(dateFromUrl)
   const [selectedId, setSelectedId] = useState<number | undefined>()
-  const selected = selectedId ?? matches[0]?.id
+  const visibleMonth = useMemo(() => new Date(`${date}T12:00:00`), [date])
+  const year = visibleMonth.getFullYear()
+  const month = visibleMonth.getMonth() + 1
+  const { data: matches = [], isLoading } = useMatches(date)
+  const { data: calendarDays = [] } = useCalendarMonth(year, month)
+
+  const selected = selectedId && matches.some((match) => match.id === selectedId) ? selectedId : matches[0]?.id
   const grouped = useMemo(() => {
     return matches.reduce<Record<string, typeof matches>>((acc, match) => {
       const key = `${match.competition.country} · ${match.competition.name}`
@@ -19,14 +30,36 @@ export function HomePage() {
     }, {})
   }, [matches])
 
+  useEffect(() => {
+    const onPop = () => setDateState(dateFromUrl())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  useEffect(() => {
+    if (selectedId && !matches.some((match) => match.id === selectedId)) setSelectedId(undefined)
+  }, [matches, selectedId])
+
+  const setDate = (nextDate: string, replace = false) => {
+    setDateState(nextDate)
+    const url = `/matches?date=${nextDate}`
+    if (replace) window.history.replaceState({}, '', url)
+    else window.history.pushState({}, '', url)
+  }
+
   const shiftDate = (days: number) => {
-    const next = new Date(date)
+    const next = new Date(`${date}T12:00:00`)
     next.setDate(next.getDate() + days)
     setDate(formatDateInput(next))
   }
 
+  const today = formatDateInput(new Date())
+  const selectedDate = new Date(`${date}T12:00:00`)
+  const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
+  const yearOptions = Array.from({ length: 25 }, (_, index) => new Date().getFullYear() - 12 + index)
+
   return (
-    <div className="grid gap-5 lg:grid-cols-[420px_1fr]">
+    <div className="grid gap-5 lg:grid-cols-[440px_1fr]">
       <section>
         <div className="card mb-4 p-4">
           <div className="flex items-center gap-2 text-lg font-black">
@@ -34,16 +67,46 @@ export function HomePage() {
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2">
             <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(-1)}>Ayer</button>
-            <button className="rounded-lg bg-brand px-3 py-2 font-bold text-white" onClick={() => setDate(formatDateInput(new Date()))}>Hoy</button>
+            <button className="rounded-lg bg-brand px-3 py-2 font-bold text-white" onClick={() => setDate(today)}>Hoy</button>
             <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)}>Mañana</button>
           </div>
-          <input className="mt-3 w-full rounded-lg border border-line px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <div className="mt-3 grid grid-cols-[auto_1fr_auto] gap-2">
+            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(-1)} aria-label="Día anterior"><ChevronLeft size={18} /></button>
+            <input className="w-full rounded-lg border border-line px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)} aria-label="Día siguiente"><ChevronRight size={18} /></button>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <select
+              className="rounded-lg border border-line bg-white px-3 py-2 font-bold"
+              value={month}
+              onChange={(event) => {
+                const next = new Date(`${date}T12:00:00`)
+                next.setMonth(Number(event.target.value) - 1)
+                setDate(formatDateInput(next))
+              }}
+            >
+              {monthOptions.map((item) => <option key={item} value={item}>{item.toString().padStart(2, '0')}</option>)}
+            </select>
+            <select
+              className="rounded-lg border border-line bg-white px-3 py-2 font-bold"
+              value={year}
+              onChange={(event) => {
+                const next = new Date(`${date}T12:00:00`)
+                next.setFullYear(Number(event.target.value))
+                setDate(formatDateInput(next))
+              }}
+            >
+              {yearOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => setDate(today)}>Volver a hoy</button>
+          </div>
+          <MonthCalendar selectedDate={selectedDate} selected={date} days={calendarDays} onSelect={setDate} />
         </div>
         <div className="card overflow-hidden">
           {isLoading ? <div className="p-4">Cargando partidos...</div> : null}
           {!isLoading && matches.length === 0 ? (
-            <div className="p-5 text-sm text-slate-600">
-              No hay partidos para esta fecha en API-Football.
+            <div className="p-5 text-sm font-semibold text-slate-600">
+              No hay partidos disponibles para el {selectedDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}.
             </div>
           ) : null}
           {Object.entries(grouped).map(([competition, rows]) => (
@@ -57,6 +120,55 @@ export function HomePage() {
         </div>
       </section>
       <section>{selected ? <MatchDetailPage matchId={selected} /> : <div className="card p-6">Selecciona un partido.</div>}</section>
+    </div>
+  )
+}
+
+function MonthCalendar({
+  selectedDate,
+  selected,
+  days,
+  onSelect,
+}: {
+  selectedDate: Date
+  selected: string
+  days: { date: string; match_count: number; published_pick_count: number }[]
+  onSelect: (date: string) => void
+}) {
+  const first = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+  const last = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
+  const startOffset = (first.getDay() + 6) % 7
+  const byDate = new Map(days.map((day) => [day.date, day]))
+  const cells: { key: string; date: string; label: string; stats?: { date: string; match_count: number; published_pick_count: number } }[] = [
+    ...Array.from({ length: startOffset }, (_, index) => ({ key: `empty-${index}`, date: '', label: '' })),
+    ...Array.from({ length: last.getDate() }, (_, index) => {
+      const day = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), index + 1)
+      const iso = formatDateInput(day)
+      return { key: iso, date: iso, label: String(index + 1), stats: byDate.get(iso) }
+    }),
+  ]
+  return (
+    <div className="mt-4">
+      <div className="mb-2 grid grid-cols-7 text-center text-xs font-black uppercase text-slate-500">
+        {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => <span key={day}>{day}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((cell) => (
+          cell.date ? (
+            <button
+              key={cell.key}
+              onClick={() => onSelect(cell.date)}
+              className={`min-h-[66px] rounded-lg border p-1 text-left text-xs ${
+                cell.date === selected ? 'border-cyan-500 bg-cyan-50' : 'border-line bg-white'
+              }`}
+            >
+              <div className="font-black">{cell.label}</div>
+              <div className="mt-1 font-bold text-slate-600">{cell.stats?.match_count ?? 0} partidos</div>
+              <div className="font-bold text-cyan-700">{cell.stats?.published_pick_count ?? 0} picks</div>
+            </button>
+          ) : <div key={cell.key} />
+        ))}
+      </div>
     </div>
   )
 }

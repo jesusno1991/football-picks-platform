@@ -1,3 +1,4 @@
+import calendar
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,6 +11,7 @@ from app.database import get_db, init_db
 from app.models import Competition, Match, Odds, Prediction, SystemPerformance, Team, TeamForm, TeamMatchStatistics
 from app.repositories import queries
 from app.schemas.schemas import (
+    CalendarDayRead,
     CompetitionRead,
     MarketEvaluationRead,
     MatchDetailRead,
@@ -18,7 +20,7 @@ from app.schemas.schemas import (
     TeamRead,
     TipstrrMarketPickRead,
 )
-from app.services.collection_service import collect_mock_data, collect_schedule_data
+from app.services.collection_service import collect_mock_data, collect_schedule_data, collect_schedule_range
 from app.services.goal_market_engine import evaluate_match_markets
 from app.services.prediction_service import generate_predictions
 from app.services.settlement_service import verify_results
@@ -30,6 +32,8 @@ from app.services.statistics_service import (
     profit_curve,
 )
 from app.services.tipstrr_market_service import list_tipstrr_market_picks
+from app.core.config import get_settings
+from app.utils.dates import local_date_from_utc_naive
 
 router = APIRouter(prefix="/api")
 
@@ -60,6 +64,51 @@ def get_matches(
     matches = queries.list_matches(db, match_date, country, competition_id, team)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+
+
+@router.get("/matches/range", response_model=list[MatchListRead])
+def get_matches_range(
+    date_from: date,
+    date_to: date,
+    db: Session = Depends(get_db),
+) -> list[MatchListRead]:
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to debe ser mayor o igual que date_from")
+    matches = queries.list_matches_range(db, date_from, date_to)
+    pick_counts = queries.pick_counts_by_match(db)
+    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+
+
+@router.get("/calendar/month", response_model=list[CalendarDayRead])
+def get_calendar_month(year: int, month: int, db: Session = Depends(get_db)) -> list[CalendarDayRead]:
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Mes no valido")
+    last_day = calendar.monthrange(year, month)[1]
+    start = date(year, month, 1)
+    end = date(year, month, last_day)
+    matches = queries.list_matches_range(db, start, end)
+    timezone_name = get_settings().app_timezone
+    grouped: dict[date, dict[str, set | int]] = {
+        date(year, month, day): {"matches": 0, "picks": 0, "published": 0, "competitions": set()} for day in range(1, last_day + 1)
+    }
+    for match in matches:
+        local_day = local_date_from_utc_naive(match.kickoff_at, timezone_name)
+        if local_day not in grouped:
+            continue
+        grouped[local_day]["matches"] = int(grouped[local_day]["matches"]) + 1
+        grouped[local_day]["competitions"].add(match.competition_id)  # type: ignore[union-attr]
+        grouped[local_day]["picks"] = int(grouped[local_day]["picks"]) + len(match.predictions)
+        grouped[local_day]["published"] = int(grouped[local_day]["published"]) + len([p for p in match.predictions if p.status == "published"])
+    return [
+        CalendarDayRead(
+            date=day.isoformat(),
+            match_count=int(values["matches"]),
+            pick_count=int(values["picks"]),
+            published_pick_count=int(values["published"]),
+            competition_count=len(values["competitions"]),  # type: ignore[arg-type]
+        )
+        for day, values in sorted(grouped.items())
+    ]
 
 
 @router.get("/matches/{match_id}", response_model=MatchDetailRead)
@@ -160,6 +209,14 @@ def admin_collect(match_date: date | None = None, db: Session = Depends(get_db))
         return collect_mock_data(db, match_date)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/admin/import-range", dependencies=[Depends(require_admin)])
+def admin_import_range(date_from: date, date_to: date, db: Session = Depends(get_db)):
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to debe ser mayor o igual que date_from")
+    init_db()
+    return collect_schedule_range(db, date_from, date_to)
 
 
 @router.post("/admin/generate-predictions", dependencies=[Depends(require_admin)])

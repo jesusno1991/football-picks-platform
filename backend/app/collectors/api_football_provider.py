@@ -118,6 +118,7 @@ class ApiFootballProvider(FootballDataProvider):
             "home_team": _team_from_api(home_raw),
             "away_team": _team_from_api(away_raw),
             "kickoff_at": _parse_fixture_datetime(fixture.get("date"), match_date),
+            "status": ((fixture.get("status") or {}).get("short") or "scheduled").lower(),
             "venue": (fixture.get("venue") or {}).get("name"),
             "round": league.get("round"),
             "season": str(league.get("season") or match_date.year),

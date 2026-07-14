@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchMatch, fetchMatches, fetchMatchMarkets, fetchOverview, fetchPredictions, fetchProfitCurve, fetchTipstrrMarketPicks } from '../services/api'
+import { fetchCalendarMonth, fetchMatch, fetchMatches, fetchMatchMarkets, fetchOverview, fetchPredictions, fetchProfitCurve, fetchTipstrrMarketPicks } from '../services/api'
 
 export function useMatches(date: string) {
   return useQuery({ queryKey: ['matches', date], queryFn: () => fetchMatches(date) })
+}
+
+export function useCalendarMonth(year: number, month: number) {
+  return useQuery({ queryKey: ['calendar-month', year, month], queryFn: () => fetchCalendarMonth(year, month) })
 }
 
 export function useMatch(id?: number) {

@@ -1,9 +1,11 @@
-from datetime import date, datetime, time
+from datetime import date
 
 from sqlalchemy import Select, and_, func, not_, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import get_settings
 from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team, TeamForm
+from app.utils.dates import local_day_bounds_utc_naive, local_range_bounds_utc_naive
 
 
 def match_query() -> Select[tuple[Match]]:
@@ -23,9 +25,8 @@ def list_matches(
 ) -> list[Match]:
     stmt = match_query()
     if match_date:
-        start = datetime.combine(match_date, time.min)
-        end = datetime.combine(match_date, time.max)
-        stmt = stmt.where(Match.kickoff_at.between(start, end))
+        start, end = local_day_bounds_utc_naive(match_date, get_settings().app_timezone)
+        stmt = stmt.where(Match.kickoff_at >= start, Match.kickoff_at < end)
     if country:
         stmt = stmt.join(Match.competition).where(Competition.country == country)
     if competition_id:
@@ -36,6 +37,11 @@ def list_matches(
             (Team.name.ilike(like)) | (Team.short_name.ilike(like))
         )
     return list(db.scalars(stmt.order_by(Match.kickoff_at)).unique())
+
+
+def list_matches_range(db: Session, date_from: date, date_to: date) -> list[Match]:
+    start, end = local_range_bounds_utc_naive(date_from, date_to, get_settings().app_timezone)
+    return list(db.scalars(match_query().where(Match.kickoff_at >= start, Match.kickoff_at < end).order_by(Match.kickoff_at)).unique())
 
 
 def get_match(db: Session, match_id: int) -> Match | None:
@@ -99,8 +105,7 @@ def list_predictions_for_date(
     status: str | None = None,
     market: str | None = None,
 ) -> list[Prediction]:
-    start = datetime.combine(match_date, time.min)
-    end = datetime.combine(match_date, time.max)
+    start, end = local_day_bounds_utc_naive(match_date, get_settings().app_timezone)
     stmt = (
         select(Prediction)
         .join(Prediction.match)
@@ -110,7 +115,7 @@ def list_predictions_for_date(
             joinedload(Prediction.match).joinedload(Match.away_team),
             joinedload(Prediction.system),
         )
-        .where(Match.kickoff_at.between(start, end))
+        .where(Match.kickoff_at >= start, Match.kickoff_at < end)
     )
     if status:
         stmt = stmt.where(Prediction.status == status)

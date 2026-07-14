@@ -1,4 +1,5 @@
-from datetime import date, datetime
+import logging
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +33,8 @@ INITIAL_SYSTEMS = [
         True,
     ),
 ]
+
+logger = logging.getLogger(__name__)
 
 
 def upsert_prediction_systems(db: Session) -> int:
@@ -111,6 +114,8 @@ def collect_mock_data(db: Session, match_date: date | None = None) -> dict[str, 
             )
             db.add(match)
             matches += 1
+        else:
+            _update_match(match, item, competition, home, away)
         db.flush()
         for team in (home, away):
             if hasattr(provider, "get_team_history_for_match"):
@@ -202,16 +207,36 @@ def collect_schedule_data(db: Session, match_date: date | None = None) -> dict[s
                     home_team_id=home.id,
                     away_team_id=away.id,
                     kickoff_at=item["kickoff_at"],
-                    status="scheduled",
+                    status=item.get("status", "scheduled"),
                     venue=item["venue"],
                     round=item["round"],
                     season=item["season"],
                 )
             )
             matches += 1
+        else:
+            _update_match(match, item, competition, home, away)
     upsert_prediction_systems(db)
     db.commit()
     return {"competitions": competitions, "teams": teams, "matches": matches, "forms": 0, "odds": 0}
+
+
+def collect_schedule_range(db: Session, date_from: date, date_to: date) -> dict[str, int]:
+    totals = {"competitions": 0, "teams": 0, "matches": 0, "forms": 0, "odds": 0, "days": 0, "errors": 0}
+    current = date_from
+    while current <= date_to:
+        try:
+            result = collect_schedule_data(db, current)
+            logger.info("calendar backfill date=%s result=%s", current.isoformat(), result)
+            for key in ("competitions", "teams", "matches", "forms", "odds"):
+                totals[key] += int(result.get(key, 0))
+            totals["days"] += 1
+        except Exception:
+            totals["errors"] += 1
+            logger.exception("calendar backfill failed date=%s", current.isoformat())
+        current += timedelta(days=1)
+    logger.info("calendar backfill complete date_from=%s date_to=%s totals=%s", date_from.isoformat(), date_to.isoformat(), totals)
+    return totals
 
 
 def _upsert_team(db: Session, data: dict) -> Team:
@@ -222,3 +247,14 @@ def _upsert_team(db: Session, data: dict) -> Team:
     db.add(team)
     db.flush()
     return team
+
+
+def _update_match(match: Match, item: dict, competition: Competition, home: Team, away: Team) -> None:
+    match.competition_id = competition.id
+    match.home_team_id = home.id
+    match.away_team_id = away.id
+    match.kickoff_at = item["kickoff_at"]
+    match.status = item.get("status", match.status or "scheduled")
+    match.venue = item.get("venue")
+    match.round = item.get("round")
+    match.season = item.get("season", match.season)

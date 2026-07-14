@@ -45,6 +45,14 @@ class MatchListRead(BaseModel):
     confidence: float | None = None
 
 
+class CalendarDayRead(BaseModel):
+    date: str
+    match_count: int
+    pick_count: int
+    published_pick_count: int
+    competition_count: int
+
+
 class TeamFormRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

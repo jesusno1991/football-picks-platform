@@ -1,5 +1,6 @@
 TASK_SCHEDULES = [
     ("collect_upcoming_matches", "cada 6 horas"),
+    ("collect_calendar_window", "diario: ultimos 30 dias, hoy y proximos 60 dias"),
     ("update_match_statuses", "cada hora"),
     ("collect_historical_statistics", "una vez al día"),
     ("collect_prematch_odds", "cada 30 minutos"),

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { MarketEvaluation, Match, Overview, Prediction, TipstrrMarketPick } from '../types/api'
+import type { CalendarDay, MarketEvaluation, Match, Overview, Prediction, TipstrrMarketPick } from '../types/api'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
@@ -7,6 +7,16 @@ export const api = axios.create({
 
 export async function fetchMatches(date?: string) {
   const response = await api.get<Match[]>('/api/matches', { params: { date } })
+  return response.data
+}
+
+export async function fetchMatchesRange(dateFrom: string, dateTo: string) {
+  const response = await api.get<Match[]>('/api/matches/range', { params: { date_from: dateFrom, date_to: dateTo } })
+  return response.data
+}
+
+export async function fetchCalendarMonth(year: number, month: number) {
+  const response = await api.get<CalendarDay[]>('/api/calendar/month', { params: { year, month } })
   return response.data
 }
 

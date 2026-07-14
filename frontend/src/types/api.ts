@@ -109,6 +109,14 @@ export type Match = {
   away_form?: Record<string, number | string | null>
 }
 
+export type CalendarDay = {
+  date: string
+  match_count: number
+  pick_count: number
+  published_pick_count: number
+  competition_count: number
+}
+
 export type Overview = {
   total_picks: number
   wins: number
