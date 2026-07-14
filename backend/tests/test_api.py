@@ -216,6 +216,33 @@ def test_model_health_endpoint_reports_operational_counts(client):
     assert "matches_without_odds" in data
 
 
+def test_deep_sync_day_persists_match_odds(client):
+    response = client.post(
+        "/api/admin/sync-day-deep",
+        params={"date": date.today().isoformat()},
+        headers={"X-Admin-Token": "test-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["odds"] >= 1
+    match = client.get(f"/api/matches?date={date.today().isoformat()}").json()[0]
+    odds = client.get(f"/api/matches/{match['id']}/odds").json()
+    assert odds
+
+
+def test_admin_maintenance_runs_protected_flow(client):
+    response = client.post(
+        "/api/admin/run-maintenance",
+        params={"days_back": 0, "days_forward": 0, "deep_today": "true"},
+        headers={"X-Admin-Token": "test-secret"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "calendar" in data
+    assert "predictions" in data
+
+
 def test_statistics_overview_empty_is_safe(client):
     data = client.get("/api/statistics/overview").json()
     assert data["total_picks"] == 0

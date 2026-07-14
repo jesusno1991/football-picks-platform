@@ -45,3 +45,12 @@ class FootballDataProvider(ABC):
     @abstractmethod
     def get_results(self, match_date: date) -> list[dict[str, Any]]:
         raise NotImplementedError
+
+    def get_events(self, match_id: str) -> list[dict[str, Any]]:
+        return []
+
+    def get_lineups(self, match_id: str) -> list[dict[str, Any]]:
+        return []
+
+    def get_standings(self, competition_external_id: str, season: str) -> list[dict[str, Any]]:
+        return []

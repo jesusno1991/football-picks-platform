@@ -58,7 +58,7 @@ from app.schemas.schemas import (
     TeamRead,
     TipstrrMarketPickRead,
 )
-from app.services.collection_service import collect_mock_data, collect_schedule_data, collect_schedule_range
+from app.services.collection_service import collect_deep_data_for_date, collect_match_deep_data, collect_mock_data, collect_schedule_data, collect_schedule_range
 from app.services.goal_market_engine import evaluate_match_markets
 from app.services.prediction_service import generate_predictions
 from app.services.settlement_service import verify_results
@@ -71,6 +71,7 @@ from app.services.statistics_service import (
 )
 from app.services.tipstrr_market_service import list_tipstrr_market_picks
 from app.services.ultimate_engine import foundation_report, list_rankings, rank_predictions
+from app.tasks.scheduled import run_maintenance
 from app.core.config import get_settings
 from app.utils.dates import local_date_from_utc_naive
 
@@ -680,6 +681,44 @@ def admin_ultimate_report(db: Session = Depends(get_db)):
     return foundation_report(db)
 
 
+@router.get("/admin/errors", dependencies=[Depends(require_admin)])
+def admin_errors(limit: int = Query(default=50, ge=1, le=200), db: Session = Depends(get_db)):
+    return [
+        {
+            "id": row.id,
+            "provider": row.provider,
+            "endpoint": row.endpoint,
+            "entity_type": row.entity_type,
+            "external_id": row.external_id,
+            "message": row.message,
+            "created_at": row.created_at.isoformat(),
+        }
+        for row in db.scalars(select(SyncError).order_by(SyncError.created_at.desc()).limit(limit))
+    ]
+
+
+@router.get("/admin/mappings", dependencies=[Depends(require_admin)])
+def admin_mappings(status: str | None = None, limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
+    from app.models import ProviderEntityMapping
+
+    stmt = select(ProviderEntityMapping).order_by(ProviderEntityMapping.updated_at.desc()).limit(limit)
+    if status:
+        stmt = stmt.where(ProviderEntityMapping.match_status == status)
+    return [
+        {
+            "id": row.id,
+            "entity_type": row.entity_type,
+            "provider": row.provider,
+            "provider_external_id": row.provider_external_id,
+            "provider_name": row.provider_name,
+            "internal_id": row.internal_id,
+            "match_status": row.match_status,
+            "confidence": row.confidence,
+        }
+        for row in db.scalars(stmt)
+    ]
+
+
 @router.get("/model-health", response_model=ModelHealthRead)
 def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
     settings = get_settings()
@@ -799,6 +838,18 @@ def admin_sync_day(match_date: date = Query(alias="date"), db: Session = Depends
     return collect_schedule_data(db, match_date)
 
 
+@router.post("/admin/sync-day-deep", dependencies=[Depends(require_admin)])
+def admin_sync_day_deep(match_date: date = Query(alias="date"), db: Session = Depends(get_db)):
+    init_db()
+    return collect_deep_data_for_date(db, match_date)
+
+
+@router.post("/admin/sync-match-deep", dependencies=[Depends(require_admin)])
+def admin_sync_match_deep(match_id: int, db: Session = Depends(get_db)):
+    init_db()
+    return collect_match_deep_data(db, match_id)
+
+
 @router.post("/admin/generate-predictions", dependencies=[Depends(require_admin)])
 def admin_generate_predictions(db: Session = Depends(get_db)):
     return generate_predictions(db)
@@ -817,6 +868,15 @@ def admin_verify_results(db: Session = Depends(get_db)):
 @router.post("/admin/recalculate-statistics", dependencies=[Depends(require_admin)])
 def admin_recalculate_statistics(db: Session = Depends(get_db)):
     return overview(db)
+
+
+@router.post("/admin/run-maintenance", dependencies=[Depends(require_admin)])
+def admin_run_maintenance(
+    days_back: int = Query(default=1, ge=0, le=30),
+    days_forward: int = Query(default=7, ge=0, le=60),
+    deep_today: bool = True,
+):
+    return run_maintenance(days_back=days_back, days_forward=days_forward, deep_today=deep_today)
 
 
 @router.post("/admin/clear-data", dependencies=[Depends(require_admin)])

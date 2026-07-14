@@ -7,7 +7,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.collectors.factory import get_provider
-from app.models import ApiUsage, Competition, Match, Odds, PredictionSystem, ProviderEntityMapping, ProviderRawResponse, SyncJob, Team, TeamForm
+from app.models import (
+    ApiUsage,
+    Competition,
+    FixtureEvent,
+    FixtureLineup,
+    Match,
+    Odds,
+    Player,
+    PredictionSystem,
+    ProviderEntityMapping,
+    ProviderRawResponse,
+    Standing,
+    SyncJob,
+    Team,
+    TeamForm,
+    TeamMatchStatistics,
+)
 
 
 INITIAL_SYSTEMS = [
@@ -259,6 +275,85 @@ def collect_schedule_range(db: Session, date_from: date, date_to: date) -> dict[
     return totals
 
 
+def collect_deep_data_for_date(db: Session, match_date: date) -> dict[str, int]:
+    collect_schedule_data(db, match_date)
+    matches = db.scalars(select(Match).where(Match.kickoff_at >= datetime.combine(match_date, datetime.min.time()), Match.kickoff_at <= datetime.combine(match_date, datetime.max.time()))).all()
+    totals = {"matches": 0, "statistics": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
+    for match in matches:
+        try:
+            result = collect_match_deep_data(db, match.id)
+            for key in totals:
+                totals[key] += int(result.get(key, 0))
+        except Exception:
+            totals["errors"] += 1
+            logger.exception("deep sync failed match_id=%s", match.id)
+    db.commit()
+    return totals
+
+
+def collect_match_deep_data(db: Session, match_id: int) -> dict[str, int]:
+    provider = get_provider()
+    provider_name = provider.__class__.__name__
+    match = db.get(Match, match_id)
+    if not match:
+        raise ValueError(f"Match not found: {match_id}")
+    totals = {"matches": 1, "statistics": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
+
+    try:
+        stats_payload = provider.get_match_statistics(match.external_id)
+        _record_api_usage(db, provider_name, "get_match_statistics", success=True)
+        _record_raw_snapshot(db, provider_name, "get_match_statistics", match.external_id, stats_payload)
+        totals["statistics"] += _upsert_match_statistics(db, match, stats_payload)
+    except Exception:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_match_statistics", success=False)
+        logger.exception("statistics sync failed match_id=%s", match.id)
+
+    try:
+        odds_payload = provider.get_odds(match.external_id)
+        _record_api_usage(db, provider_name, "get_odds", success=True)
+        _record_raw_snapshot(db, provider_name, "get_odds", match.external_id, odds_payload)
+        totals["odds"] += _upsert_odds(db, match, odds_payload)
+    except Exception:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_odds", success=False)
+        logger.exception("odds sync failed match_id=%s", match.id)
+
+    try:
+        events_payload = provider.get_events(match.external_id)
+        _record_api_usage(db, provider_name, "get_events", success=True)
+        _record_raw_snapshot(db, provider_name, "get_events", match.external_id, events_payload)
+        totals["events"] += _upsert_events(db, match, events_payload, provider_name)
+    except Exception:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_events", success=False)
+        logger.exception("events sync failed match_id=%s", match.id)
+
+    try:
+        lineups_payload = provider.get_lineups(match.external_id)
+        _record_api_usage(db, provider_name, "get_lineups", success=True)
+        _record_raw_snapshot(db, provider_name, "get_lineups", match.external_id, lineups_payload)
+        totals["lineups"] += _upsert_lineups(db, match, lineups_payload, provider_name)
+    except Exception:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_lineups", success=False)
+        logger.exception("lineups sync failed match_id=%s", match.id)
+
+    try:
+        standings_payload = provider.get_standings(match.competition.external_id, match.season)
+        if standings_payload:
+            _record_api_usage(db, provider_name, "get_standings", success=True)
+            _record_raw_snapshot(db, provider_name, "get_standings", match.competition.external_id, standings_payload)
+            totals["standings"] += _upsert_standings(db, match.competition_id, match.season, standings_payload, provider_name)
+    except Exception:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_standings", success=False)
+        logger.exception("standings sync failed competition_id=%s", match.competition_id)
+
+    db.commit()
+    return totals
+
+
 def _upsert_team(db: Session, data: dict, provider_name: str | None = None) -> Team:
     team = db.scalar(select(Team).where(Team.external_id == data["external_id"]))
     if team:
@@ -282,6 +377,241 @@ def _update_match(match: Match, item: dict, competition: Competition, home: Team
     match.venue = item.get("venue")
     match.round = item.get("round")
     match.season = item.get("season", match.season)
+
+
+def _upsert_match_statistics(db: Session, match: Match, payload: list[dict]) -> int:
+    count = 0
+    for index, row in enumerate(payload):
+        team_raw = row.get("team") or {}
+        stats_raw = row.get("statistics") or []
+        team_id = _internal_team_id_for_provider_team(match, team_raw)
+        if not team_id:
+            continue
+        existing = db.scalar(select(TeamMatchStatistics).where(TeamMatchStatistics.match_id == match.id, TeamMatchStatistics.team_id == team_id))
+        values = _statistics_values(stats_raw)
+        if not existing:
+            existing = TeamMatchStatistics(match_id=match.id, team_id=team_id, is_home=team_id == match.home_team_id, **values)
+            db.add(existing)
+            count += 1
+        else:
+            for key, value in values.items():
+                setattr(existing, key, value)
+        if index == 0 and values.get("corners") is not None:
+            match.home_corners = int(values["corners"]) if team_id == match.home_team_id else match.home_corners
+        if index == 1 and values.get("corners") is not None:
+            match.away_corners = int(values["corners"]) if team_id == match.away_team_id else match.away_corners
+    return count
+
+
+def _upsert_odds(db: Session, match: Match, payload: list[dict]) -> int:
+    count = 0
+    for odd in payload:
+        existing = db.scalar(
+            select(Odds).where(
+                Odds.match_id == match.id,
+                Odds.bookmaker == odd["bookmaker"],
+                Odds.market == odd["market"],
+                Odds.selection == odd["selection"],
+                Odds.line == odd.get("line"),
+                Odds.period == odd.get("period"),
+                Odds.team_scope == odd.get("team_scope"),
+            )
+        )
+        if existing:
+            existing.odds = odd["odds"]
+            existing.collected_at = datetime.utcnow()
+            existing.validation_status = odd.get("validation_status", existing.validation_status)
+        else:
+            db.add(Odds(match_id=match.id, **odd))
+            count += 1
+    return count
+
+
+def _upsert_events(db: Session, match: Match, payload: list[dict], provider_name: str) -> int:
+    count = 0
+    for row in payload:
+        team_id = _internal_team_id_for_provider_team(match, row.get("team") or {})
+        player = _upsert_player_from_event(db, row.get("player") or {}, team_id)
+        assist = _upsert_player_from_event(db, row.get("assist") or {}, team_id)
+        time_data = row.get("time") or {}
+        score_data = row.get("score") or {}
+        minute = _to_int(time_data.get("elapsed"))
+        detail = row.get("detail")
+        event_type = row.get("type") or "event"
+        duplicate = db.scalar(
+            select(FixtureEvent).where(
+                FixtureEvent.match_id == match.id,
+                FixtureEvent.minute == minute,
+                FixtureEvent.team_id == team_id,
+                FixtureEvent.event_type == str(event_type),
+                FixtureEvent.detail == detail,
+            )
+        )
+        if duplicate:
+            continue
+        db.add(
+            FixtureEvent(
+                match_id=match.id,
+                team_id=team_id,
+                player_id=player.id if player else None,
+                assist_player_id=assist.id if assist else None,
+                minute=minute,
+                extra_minute=_to_int(time_data.get("extra")),
+                event_type=str(event_type),
+                detail=detail,
+                comments=row.get("comments"),
+                score_home=_to_int((score_data.get("home") if isinstance(score_data, dict) else None)),
+                score_away=_to_int((score_data.get("away") if isinstance(score_data, dict) else None)),
+                source_provider=provider_name,
+                raw_payload=json.dumps(row, ensure_ascii=False, default=str),
+            )
+        )
+        count += 1
+    return count
+
+
+def _upsert_lineups(db: Session, match: Match, payload: list[dict], provider_name: str) -> int:
+    count = 0
+    for team_row in payload:
+        team_id = _internal_team_id_for_provider_team(match, team_row.get("team") or {})
+        if not team_id:
+            continue
+        formation = team_row.get("formation")
+        for line_type, players in (("starting", team_row.get("startXI") or []), ("substitute", team_row.get("substitutes") or [])):
+            for item in players:
+                player_raw = item.get("player") or item
+                player = _upsert_player_from_event(db, player_raw, team_id)
+                if not player:
+                    continue
+                existing = db.scalar(select(FixtureLineup).where(FixtureLineup.match_id == match.id, FixtureLineup.team_id == team_id, FixtureLineup.player_id == player.id))
+                if existing:
+                    existing.formation = formation
+                    existing.line_type = line_type
+                    existing.position = player_raw.get("pos")
+                    existing.grid = player_raw.get("grid")
+                    existing.shirt_number = _to_int(player_raw.get("number"))
+                else:
+                    db.add(
+                        FixtureLineup(
+                            match_id=match.id,
+                            team_id=team_id,
+                            player_id=player.id,
+                            coach_id=None,
+                            formation=formation,
+                            line_type=line_type,
+                            position=player_raw.get("pos"),
+                            grid=player_raw.get("grid"),
+                            shirt_number=_to_int(player_raw.get("number")),
+                            is_captain=False,
+                            rating=None,
+                            source_provider=provider_name,
+                            raw_payload=json.dumps(item, ensure_ascii=False, default=str),
+                        )
+                    )
+                    count += 1
+    return count
+
+
+def _upsert_standings(db: Session, competition_id: int, season: str, payload: list[dict], provider_name: str) -> int:
+    count = 0
+    for row in payload:
+        team_raw = row.get("team") or {}
+        team_external = f"api-football-team-{team_raw.get('id')}" if team_raw.get("id") is not None else None
+        team = db.scalar(select(Team).where(Team.external_id == team_external)) if team_external else None
+        if not team and team_raw.get("name"):
+            team = _upsert_team(db, {"external_id": team_external or f"{provider_name}-team-{team_raw.get('name')}", "name": team_raw.get("name"), "short_name": str(team_raw.get("name"))[:3].upper(), "country": None, "logo_url": team_raw.get("logo")}, provider_name)
+        if not team:
+            continue
+        existing = db.scalar(select(Standing).where(Standing.competition_id == competition_id, Standing.season == season, Standing.group_name == row.get("group"), Standing.team_id == team.id))
+        values = {
+            "rank": _to_int(row.get("rank")) or 0,
+            "played": _to_int((row.get("all") or {}).get("played")),
+            "wins": _to_int((row.get("all") or {}).get("win")),
+            "draws": _to_int((row.get("all") or {}).get("draw")),
+            "losses": _to_int((row.get("all") or {}).get("lose")),
+            "goals_for": _to_int(((row.get("all") or {}).get("goals") or {}).get("for")),
+            "goals_against": _to_int(((row.get("all") or {}).get("goals") or {}).get("against")),
+            "goal_difference": _to_int(row.get("goalsDiff")),
+            "points": _to_int(row.get("points")),
+            "form": row.get("form"),
+            "description": row.get("description"),
+            "source_provider": provider_name,
+            "source_updated_at": datetime.utcnow(),
+        }
+        if existing:
+            for key, value in values.items():
+                setattr(existing, key, value)
+        else:
+            db.add(Standing(competition_id=competition_id, season=season, group_name=row.get("group"), team_id=team.id, **values))
+            count += 1
+    return count
+
+
+def _internal_team_id_for_provider_team(match: Match, team_raw: dict) -> int | None:
+    raw_id = team_raw.get("id")
+    if raw_id is not None:
+        external = f"api-football-team-{raw_id}"
+        if match.home_team.external_id == external:
+            return match.home_team_id
+        if match.away_team.external_id == external:
+            return match.away_team_id
+    name = str(team_raw.get("name") or "").strip().lower()
+    if name and match.home_team.name.strip().lower() == name:
+        return match.home_team_id
+    if name and match.away_team.name.strip().lower() == name:
+        return match.away_team_id
+    return None
+
+
+def _statistics_values(stats_raw: list[dict]) -> dict:
+    values = {str(item.get("type") or "").lower(): item.get("value") for item in stats_raw if isinstance(item, dict)}
+    return {
+        "possession": _percent(values.get("ball possession")),
+        "shots": _to_float(values.get("total shots")),
+        "shots_on_target": _to_float(values.get("shots on goal")),
+        "corners": _to_float(values.get("corner kicks")),
+        "dangerous_attacks": _to_float(values.get("dangerous attacks")),
+        "goals": None,
+        "xg": _to_float(values.get("expected goals")),
+        "yellow_cards": _to_float(values.get("yellow cards")),
+        "red_cards": _to_float(values.get("red cards")),
+    }
+
+
+def _upsert_player_from_event(db: Session, raw: dict, team_id: int | None) -> Player | None:
+    player_id = raw.get("id")
+    name = raw.get("name")
+    if not player_id and not name:
+        return None
+    external_id = f"api-football-player-{player_id}" if player_id is not None else None
+    player = db.scalar(select(Player).where(Player.external_id == external_id)) if external_id else None
+    if not player and name:
+        player = Player(external_id=external_id, name=str(name), firstname=None, lastname=None, nationality=None, birth_date=None, position=raw.get("pos"), height=None, weight=None, photo_url=None, current_team_id=team_id)
+        db.add(player)
+        db.flush()
+    elif player and team_id and not player.current_team_id:
+        player.current_team_id = team_id
+    return player
+
+
+def _percent(value) -> float | None:
+    if isinstance(value, str) and value.endswith("%"):
+        return _to_float(value[:-1])
+    return _to_float(value)
+
+
+def _to_int(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _start_sync_job(db: Session, job_type: str, provider: str, target_date: date) -> SyncJob:

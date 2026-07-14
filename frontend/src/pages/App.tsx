@@ -1,19 +1,21 @@
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import type React from 'react'
 import { Activity, BarChart3, CalendarDays, Database, FileClock, Home, ListChecks, Search, Shield, Star, Table2, Trophy, Users } from 'lucide-react'
-import { AdminPage } from './AdminPage'
-import { ArchivePage } from './ArchivePage'
-import { CalendarPage } from './CalendarPage'
-import { CompetitionsPage } from './CompetitionsPage'
-import { DashboardPage } from './DashboardPage'
-import { HomePage } from './HomePage'
-import { ModelHealthPage } from './ModelHealthPage'
-import { PicksPage } from './PicksPage'
-import { PlayersPage } from './PlayersPage'
-import { StandingsPage } from './StandingsPage'
-import { StatsPage } from './StatsPage'
-import { TeamsPage } from './TeamsPage'
-import { TipstrrMarketsPage } from './TipstrrMarketsPage'
+
+const AdminPage = lazy(() => import('./AdminPage').then((module) => ({ default: module.AdminPage })))
+const ArchivePage = lazy(() => import('./ArchivePage').then((module) => ({ default: module.ArchivePage })))
+const CalendarPage = lazy(() => import('./CalendarPage').then((module) => ({ default: module.CalendarPage })))
+const CompetitionsPage = lazy(() => import('./CompetitionsPage').then((module) => ({ default: module.CompetitionsPage })))
+const DashboardPage = lazy(() => import('./DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const HomePage = lazy(() => import('./HomePage').then((module) => ({ default: module.HomePage })))
+const MatchDetailPage = lazy(() => import('./MatchDetailPage').then((module) => ({ default: module.MatchDetailPage })))
+const ModelHealthPage = lazy(() => import('./ModelHealthPage').then((module) => ({ default: module.ModelHealthPage })))
+const PicksPage = lazy(() => import('./PicksPage').then((module) => ({ default: module.PicksPage })))
+const PlayersPage = lazy(() => import('./PlayersPage').then((module) => ({ default: module.PlayersPage })))
+const StandingsPage = lazy(() => import('./StandingsPage').then((module) => ({ default: module.StandingsPage })))
+const StatsPage = lazy(() => import('./StatsPage').then((module) => ({ default: module.StatsPage })))
+const TeamsPage = lazy(() => import('./TeamsPage').then((module) => ({ default: module.TeamsPage })))
+const TipstrrMarketsPage = lazy(() => import('./TipstrrMarketsPage').then((module) => ({ default: module.TipstrrMarketsPage })))
 
 type Page =
   | 'inicio'
@@ -30,6 +32,42 @@ type Page =
   | 'archivo'
   | 'modelo'
   | 'administracion'
+
+function pageFromPath(pathname: string): { page: Page; matchId?: number } {
+  const match = pathname.match(/^\/matches\/(\d+)/)
+  if (match) return { page: 'partidos', matchId: Number(match[1]) }
+  if (pathname.startsWith('/matches')) return { page: 'partidos' }
+  if (pathname.startsWith('/calendar')) return { page: 'calendario' }
+  if (pathname.startsWith('/competitions')) return { page: 'competiciones' }
+  if (pathname.startsWith('/teams')) return { page: 'equipos' }
+  if (pathname.startsWith('/players')) return { page: 'jugadores' }
+  if (pathname.startsWith('/standings')) return { page: 'clasificaciones' }
+  if (pathname.startsWith('/markets')) return { page: 'mercados' }
+  if (pathname.startsWith('/picks')) return { page: 'picks' }
+  if (pathname.startsWith('/predictions')) return { page: 'predicciones' }
+  if (pathname.startsWith('/statistics')) return { page: 'estadisticas' }
+  if (pathname.startsWith('/archive')) return { page: 'archivo' }
+  if (pathname.startsWith('/model-health')) return { page: 'modelo' }
+  if (pathname.startsWith('/admin')) return { page: 'administracion' }
+  return { page: 'inicio' }
+}
+
+const pagePaths: Record<Page, string> = {
+  inicio: '/',
+  partidos: '/matches',
+  calendario: '/calendar',
+  competiciones: '/competitions',
+  equipos: '/teams',
+  jugadores: '/players',
+  clasificaciones: '/standings',
+  mercados: '/markets',
+  picks: '/picks',
+  predicciones: '/predictions',
+  estadisticas: '/statistics',
+  archivo: '/archive',
+  modelo: '/model-health',
+  administracion: '/admin',
+}
 
 const nav: { page: Page; label: string; icon: React.ReactNode }[] = [
   { page: 'inicio', label: 'Inicio', icon: <Home size={17} /> },
@@ -49,7 +87,20 @@ const nav: { page: Page; label: string; icon: React.ReactNode }[] = [
 ]
 
 export function App() {
-  const [page, setPage] = useState<Page>('inicio')
+  const [route, setRoute] = useState(() => pageFromPath(window.location.pathname))
+  const page = route.page
+
+  useEffect(() => {
+    const onPop = () => setRoute(pageFromPath(window.location.pathname))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const navigate = (nextPage: Page) => {
+    window.history.pushState({}, '', pagePaths[nextPage])
+    setRoute({ page: nextPage })
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-5">
       <header className="mb-5 rounded-lg border border-line bg-white p-5 shadow-sm">
@@ -61,24 +112,26 @@ export function App() {
           <div className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black text-cyan-800">Datos reales de proveedores · Sin demos inventadas</div>
         </div>
         <nav className="mt-5 flex gap-2 overflow-x-auto pb-1">
-          {nav.map((item) => <NavButton key={item.page} active={page === item.page} onClick={() => setPage(item.page)} icon={item.icon} label={item.label} />)}
+          {nav.map((item) => <NavButton key={item.page} active={page === item.page} onClick={() => navigate(item.page)} icon={item.icon} label={item.label} />)}
         </nav>
       </header>
 
-      {page === 'inicio' ? <DashboardPage /> : null}
-      {page === 'partidos' ? <HomePage /> : null}
-      {page === 'calendario' ? <CalendarPage /> : null}
-      {page === 'competiciones' ? <CompetitionsPage /> : null}
-      {page === 'equipos' ? <TeamsPage /> : null}
-      {page === 'jugadores' ? <PlayersPage /> : null}
-      {page === 'clasificaciones' ? <StandingsPage /> : null}
-      {page === 'mercados' ? <TipstrrMarketsPage /> : null}
-      {page === 'picks' ? <PicksPage onlyPublishable /> : null}
-      {page === 'predicciones' ? <PicksPage /> : null}
-      {page === 'estadisticas' ? <StatsPage /> : null}
-      {page === 'archivo' ? <ArchivePage /> : null}
-      {page === 'modelo' ? <ModelHealthPage /> : null}
-      {page === 'administracion' ? <AdminPage /> : null}
+      <Suspense fallback={<div className="card p-6 font-bold text-slate-600">Cargando modulo...</div>}>
+        {page === 'inicio' ? <DashboardPage /> : null}
+        {page === 'partidos' ? route.matchId ? <MatchDetailPage matchId={route.matchId} /> : <HomePage /> : null}
+        {page === 'calendario' ? <CalendarPage /> : null}
+        {page === 'competiciones' ? <CompetitionsPage /> : null}
+        {page === 'equipos' ? <TeamsPage /> : null}
+        {page === 'jugadores' ? <PlayersPage /> : null}
+        {page === 'clasificaciones' ? <StandingsPage /> : null}
+        {page === 'mercados' ? <TipstrrMarketsPage /> : null}
+        {page === 'picks' ? <PicksPage onlyPublishable /> : null}
+        {page === 'predicciones' ? <PicksPage /> : null}
+        {page === 'estadisticas' ? <StatsPage /> : null}
+        {page === 'archivo' ? <ArchivePage /> : null}
+        {page === 'modelo' ? <ModelHealthPage /> : null}
+        {page === 'administracion' ? <AdminPage /> : null}
+      </Suspense>
     </main>
   )
 }

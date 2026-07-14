@@ -53,6 +53,27 @@ class ApiFootballProvider(FootballDataProvider):
     def get_results(self, match_date: date) -> list[dict[str, Any]]:
         return _responses(self._request("/fixtures", {"date": match_date.isoformat(), "status": "FT-AET-PEN"}))
 
+    def get_events(self, match_id: str) -> list[dict[str, Any]]:
+        fixture_id = _strip_prefix(match_id, "api-football-")
+        return _responses(self._request("/fixtures/events", {"fixture": fixture_id}))
+
+    def get_lineups(self, match_id: str) -> list[dict[str, Any]]:
+        fixture_id = _strip_prefix(match_id, "api-football-")
+        return _responses(self._request("/fixtures/lineups", {"fixture": fixture_id}))
+
+    def get_standings(self, competition_external_id: str, season: str) -> list[dict[str, Any]]:
+        parts = competition_external_id.replace("api-football-league-", "").split("-")
+        if not parts:
+            return []
+        league_id = parts[0]
+        payload = self._request("/standings", {"league": league_id, "season": season})
+        rows: list[dict[str, Any]] = []
+        for league in _responses(payload):
+            for group in ((league.get("league") or {}).get("standings") or []):
+                if isinstance(group, list):
+                    rows.extend([item for item in group if isinstance(item, dict)])
+        return rows
+
     def diagnostics(self, match_date: date) -> dict[str, Any]:
         try:
             status = self._request("/status", {})

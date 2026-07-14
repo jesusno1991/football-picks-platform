@@ -11,6 +11,7 @@ export function AdminPage() {
   const [date, setDate] = useState(today)
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
+  const [matchId, setMatchId] = useState('')
   const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null)
   const { data, isLoading } = useAdminStatus()
   const { data: rankings = [] } = useMarketRankings()
@@ -69,6 +70,15 @@ export function AdminPage() {
           <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/import-range', params: { date_from: dateFrom, date_to: dateTo } })}>Importar rango</button>
           <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/generate-predictions' })}>Recalcular picks</button>
           <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/rank-markets' })}>Rankear mercados</button>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_1fr_auto]">
+          <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/sync-day-deep', params: { date } })}>Enriquecer fecha</button>
+          <input className="rounded-lg border border-line px-3 py-2" value={matchId} onChange={(event) => setMatchId(event.target.value)} placeholder="ID interno partido" />
+          <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || !matchId || action.isPending} onClick={() => action.mutate({ path: '/api/admin/sync-match-deep', params: { match_id: Number(matchId) } })}>Enriquecer partido</button>
+          <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/verify-results' })}>Verificar resultados</button>
+        </div>
+        <div className="mt-3">
+          <button className="rounded-lg bg-slate-950 px-4 py-2 font-black text-white" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/run-maintenance', params: { days_back: 1, days_forward: 7, deep_today: 'true' } })}>Ejecutar mantenimiento completo</button>
         </div>
         {action.error ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">Error ejecutando accion.</div> : null}
         {lastResult ? <pre className="mt-3 max-h-52 overflow-auto rounded-lg bg-slate-950 p-3 text-xs font-semibold text-white">{JSON.stringify(lastResult, null, 2)}</pre> : null}
