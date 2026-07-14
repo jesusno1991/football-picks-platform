@@ -293,6 +293,17 @@ def _normalize_odd_value(bet_name: str, value: dict[str, Any]) -> dict[str, Any]
         if selection:
             return _odd("draw_no_bet", "draw_no_bet", "full_time", "all", selection, None, odd)
 
+    if "correct score" in bet_lower:
+        if "-" in selection_name:
+            return _odd("correct_score", "correct_score", "full_time", "all", selection_name.replace(" ", ""), None, odd)
+
+    if "asian handicap" in bet_lower or bet_lower in {"handicap result", "handicap"}:
+        handicap = _handicap_from_selection(selection_name)
+        if handicap:
+            team_scope, line = handicap
+            period = "first_half" if "1st half" in bet_lower or "first half" in bet_lower else "full_time"
+            return _odd("asian_handicap", "asian_handicap", period, team_scope, "handicap", line, odd)
+
     if "both teams" in bet_lower and selection_lower in {"yes", "no", "si", "sí", "sÃ­"}:
         selection = "yes" if selection_lower in {"yes", "si", "sí", "sÃ­"} else "no"
         return _odd("btts", "btts", _period_from_bet(bet_lower), "all", selection, None, odd)
@@ -341,6 +352,23 @@ def _team_scope_from_bet(bet_lower: str) -> str:
     if "away team" in bet_lower or "away goals" in bet_lower or "team 2" in bet_lower:
         return "away"
     return "all"
+
+
+def _handicap_from_selection(selection_name: str) -> tuple[str, float] | None:
+    value = selection_name.replace(",", ".")
+    parts = value.split()
+    line = None
+    for part in parts:
+        candidate = _to_float(part)
+        if candidate is not None:
+            line = candidate
+            break
+    if line is None:
+        return None
+    lowered = value.lower()
+    if "away" in lowered or lowered.startswith("2 ") or lowered.startswith("2"):
+        return "away", line
+    return "home", line
 
 
 def _line_from_selection(value: str) -> float | None:

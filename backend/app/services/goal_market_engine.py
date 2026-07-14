@@ -137,6 +137,12 @@ def probability_for_market(
         win = _result_probability(matrix, selection)
         push = _result_probability(matrix, "draw")
         return SettlementDistribution(probability_full_win=win, probability_push=push, probability_full_loss=max(0, 1 - win - push)), win, "draw_no_bet"
+    if family == "asian_handicap" and line is not None:
+        distribution = _asian_handicap_distribution(matrix, team_scope, line)
+        return distribution, _binary_probability_from_distribution(distribution), "asian_handicap"
+    if family == "correct_score":
+        probability = _correct_score_probability(matrix, selection)
+        return SettlementDistribution(probability_full_win=probability, probability_full_loss=1 - probability), probability, "binary"
     return SettlementDistribution(), None, "unsupported"
 
 
@@ -344,6 +350,41 @@ def _double_chance_probability(matrix: dict[tuple[int, int], float], selection: 
     return 0.0
 
 
+def _asian_handicap_distribution(matrix: dict[tuple[int, int], float], team_scope: str, line: float) -> SettlementDistribution:
+    full_win = half_win = push = half_loss = full_loss = 0.0
+    for (home_goals, away_goals), probability in matrix.items():
+        margin = home_goals - away_goals if team_scope == "home" else away_goals - home_goals
+        units = _settlement_units_for_handicap(margin, line)
+        if units == 1:
+            full_win += probability
+        elif units == 0.5:
+            half_win += probability
+        elif units == 0:
+            push += probability
+        elif units == -0.5:
+            half_loss += probability
+        else:
+            full_loss += probability
+    return SettlementDistribution(full_win, half_win, push, half_loss, full_loss).normalized()
+
+
+def _settlement_units_for_handicap(margin: int, line: float) -> float:
+    components = _quarter_components(line)
+    units = 0.0
+    for component in components:
+        adjusted = margin + component
+        units += 1 if adjusted > 0 else 0 if adjusted == 0 else -1
+    return units / len(components)
+
+
+def _correct_score_probability(matrix: dict[tuple[int, int], float], selection: str) -> float:
+    try:
+        home_goals, away_goals = [int(part) for part in selection.split("-")]
+    except (ValueError, AttributeError):
+        return 0.0
+    return round(matrix.get((home_goals, away_goals), 0.0), 6)
+
+
 def _settlement_ev(distribution: SettlementDistribution, odds: float) -> float:
     return (
         distribution.probability_full_win * (odds - 1)
@@ -374,6 +415,8 @@ def _validate_market(match: Match, odd: Odds, lambdas: GoalLambdas, expected_val
 def _risk_level(family: str, line: float | None) -> str:
     if family == "correct_score":
         return "high"
+    if family == "asian_handicap" and line is not None and abs(line) >= 1.5:
+        return "medium"
     if line is not None and line >= 4.0:
         return "medium"
     return "low"

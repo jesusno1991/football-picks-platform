@@ -28,3 +28,21 @@ def test_period_specific_btts_is_different():
     _, ft_probability, _ = probability_for_market("btts", "full_time", "all", "yes", None, lambdas)
     _, fh_probability, _ = probability_for_market("btts", "first_half", "all", "yes", None, lambdas)
     assert ft_probability != fh_probability
+
+
+def test_asian_handicap_has_partial_settlement_distribution():
+    lambdas = GoalLambdas(1.6, 0.9, 0.7, 0.35, 0.9, 0.55, 0.7, 80, 30)
+    distribution, probability, settlement = probability_for_market("asian_handicap", "full_time", "home", "handicap", -0.75, lambdas)
+    assert settlement == "asian_handicap"
+    assert probability is not None
+    assert distribution.probability_half_win > 0
+    assert distribution.probability_full_loss > 0
+
+
+def test_correct_score_uses_exact_score_cell():
+    lambdas = GoalLambdas(1.2, 0.8, 0.5, 0.3, 0.7, 0.5, 0.7, 80, 30)
+    distribution, probability, settlement = probability_for_market("correct_score", "full_time", "all", "1-0", None, lambdas)
+    assert settlement == "binary"
+    assert probability is not None
+    assert probability == distribution.probability_full_win
+    assert 0 < probability < 1

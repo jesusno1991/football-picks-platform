@@ -134,6 +134,8 @@ function FormPanel({ title, form }: { title: string; form: Record<string, number
 
 function groupLabel(market: MarketEvaluation) {
   if (market.family === 'double_chance' || market.family === 'draw_no_bet' || market.family === 'match_result') return 'Partido completo'
+  if (market.family === 'asian_handicap') return market.period === 'first_half' ? 'Hándicap asiático 1H' : 'Hándicap asiático'
+  if (market.family === 'correct_score') return 'Marcador correcto'
   if (market.period === 'first_half' && market.team_scope === 'all') return 'Primera mitad'
   if (market.period === 'second_half' && market.team_scope === 'all') return 'Segunda mitad'
   if (market.team_scope === 'home') return 'Equipo local'
@@ -149,6 +151,8 @@ function marketLabel(market: MarketEvaluation) {
   if (market.family === 'match_result') return `Resultado ${market.selection}`
   if (market.family === 'double_chance') return `Doble oportunidad ${market.selection.toUpperCase()}`
   if (market.family === 'draw_no_bet') return `Empate no apuesta ${market.selection}`
+  if (market.family === 'asian_handicap') return `${period} Hándicap ${market.team_scope === 'home' ? 'local' : 'visitante'} ${market.line}`
+  if (market.family === 'correct_score') return `Marcador correcto ${market.selection}`
   return market.code
 }
 
