@@ -14,6 +14,13 @@ export function AdminPage() {
     ['Clasificaciones', data.standings_rows],
     ['Raw responses', data.raw_responses],
     ['Mappings pendientes', data.mappings_unmatched],
+    ['Arbitros', data.referees],
+    ['Plantillas', data.squad_members],
+    ['Stats equipos temporada', data.team_season_statistics],
+    ['Stats jugadores temporada', data.player_season_statistics],
+    ['Calidad de datos', data.data_quality_snapshots],
+    ['Cache', data.cache_entries],
+    ['Auditoria IA', data.model_audit_logs],
   ]
   return (
     <div className="space-y-4">

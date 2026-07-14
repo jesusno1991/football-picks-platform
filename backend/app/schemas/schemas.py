@@ -231,6 +231,13 @@ class AdminStatusRead(BaseModel):
     standings_rows: int
     raw_responses: int
     mappings_unmatched: int
+    referees: int = 0
+    squad_members: int = 0
+    team_season_statistics: int = 0
+    player_season_statistics: int = 0
+    data_quality_snapshots: int = 0
+    cache_entries: int = 0
+    model_audit_logs: int = 0
     latest_sync_jobs: list[dict] = Field(default_factory=list)
     api_usage: list[dict] = Field(default_factory=list)
 

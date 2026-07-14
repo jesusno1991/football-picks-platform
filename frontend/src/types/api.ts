@@ -205,6 +205,13 @@ export type AdminStatus = {
   standings_rows: number
   raw_responses: number
   mappings_unmatched: number
+  referees: number
+  squad_members: number
+  team_season_statistics: number
+  player_season_statistics: number
+  data_quality_snapshots: number
+  cache_entries: number
+  model_audit_logs: number
   latest_sync_jobs: Record<string, unknown>[]
   api_usage: Record<string, unknown>[]
 }

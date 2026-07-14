@@ -9,7 +9,27 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_admin
 from app.collectors.factory import get_provider
 from app.database import get_db, init_db
-from app.models import Competition, Match, Odds, Player, Prediction, ProviderRawResponse, Standing, SyncJob, SystemPerformance, Team, TeamForm, TeamMatchStatistics
+from app.models import (
+    CacheEntry,
+    Competition,
+    DataQualitySnapshot,
+    Match,
+    ModelAuditLog,
+    Odds,
+    Player,
+    PlayerSeasonStatistic,
+    Prediction,
+    ProviderRawResponse,
+    Referee,
+    SquadMember,
+    Standing,
+    SyncJob,
+    SystemPerformance,
+    Team,
+    TeamForm,
+    TeamMatchStatistics,
+    TeamSeasonStatistic,
+)
 from app.repositories import queries
 from app.schemas.schemas import (
     AdminStatusRead,
@@ -582,6 +602,13 @@ def admin_status(db: Session = Depends(get_db)) -> AdminStatusRead:
         standings_rows=int(db.scalar(select(func.count(Standing.id))) or 0),
         raw_responses=int(db.scalar(select(func.count(ProviderRawResponse.id))) or 0),
         mappings_unmatched=queries.count_unmatched_mappings(db),
+        referees=int(db.scalar(select(func.count(Referee.id))) or 0),
+        squad_members=int(db.scalar(select(func.count(SquadMember.id))) or 0),
+        team_season_statistics=int(db.scalar(select(func.count(TeamSeasonStatistic.id))) or 0),
+        player_season_statistics=int(db.scalar(select(func.count(PlayerSeasonStatistic.id))) or 0),
+        data_quality_snapshots=int(db.scalar(select(func.count(DataQualitySnapshot.id))) or 0),
+        cache_entries=int(db.scalar(select(func.count(CacheEntry.id))) or 0),
+        model_audit_logs=int(db.scalar(select(func.count(ModelAuditLog.id))) or 0),
         latest_sync_jobs=jobs,
         api_usage=usage,
     )
@@ -602,6 +629,12 @@ def admin_import_range(date_from: date, date_to: date, db: Session = Depends(get
         raise HTTPException(status_code=400, detail="date_to debe ser mayor o igual que date_from")
     init_db()
     return collect_schedule_range(db, date_from, date_to)
+
+
+@router.post("/admin/sync-day", dependencies=[Depends(require_admin)])
+def admin_sync_day(match_date: date = Query(alias="date"), db: Session = Depends(get_db)):
+    init_db()
+    return collect_schedule_data(db, match_date)
 
 
 @router.post("/admin/generate-predictions", dependencies=[Depends(require_admin)])

@@ -94,6 +94,16 @@ class Coach(TimestampMixin, Base):
     photo_url: Mapped[str | None] = mapped_column(String(500))
 
 
+class Referee(TimestampMixin, Base):
+    __tablename__ = "referees"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    external_id: Mapped[str | None] = mapped_column(String(120), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(180), index=True)
+    nationality: Mapped[str | None] = mapped_column(String(120), index=True)
+    source_provider: Mapped[str | None] = mapped_column(String(80), index=True)
+
+
 class Venue(TimestampMixin, Base):
     __tablename__ = "venues"
 
@@ -132,6 +142,22 @@ class PlayerAlias(Base):
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
     alias: Mapped[str] = mapped_column(String(180), index=True)
     source_provider: Mapped[str | None] = mapped_column(String(80), index=True)
+
+
+class SquadMember(TimestampMixin, Base):
+    __tablename__ = "squad_members"
+    __table_args__ = (UniqueConstraint("team_id", "player_id", "season", name="uq_squad_member_season"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    season: Mapped[str] = mapped_column(String(40), index=True)
+    shirt_number: Mapped[int | None] = mapped_column(Integer)
+    position: Mapped[str | None] = mapped_column(String(80), index=True)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime)
+    source_provider: Mapped[str | None] = mapped_column(String(80), index=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text)
 
 
 class Match(TimestampMixin, Base):
@@ -298,6 +324,69 @@ class Standing(TimestampMixin, Base):
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class StandingGroup(TimestampMixin, Base):
+    __tablename__ = "standing_groups"
+    __table_args__ = (UniqueConstraint("competition_id", "season", "name", name="uq_standing_group"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competition_id: Mapped[int] = mapped_column(ForeignKey("competitions.id"), index=True)
+    season: Mapped[str] = mapped_column(String(40), index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    phase: Mapped[str | None] = mapped_column(String(120), index=True)
+    source_provider: Mapped[str | None] = mapped_column(String(80), index=True)
+
+
+class TeamSeasonStatistic(TimestampMixin, Base):
+    __tablename__ = "team_season_statistics"
+    __table_args__ = (UniqueConstraint("team_id", "competition_id", "season", "scope", name="uq_team_season_stat"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    competition_id: Mapped[int | None] = mapped_column(ForeignKey("competitions.id"), index=True)
+    season: Mapped[str] = mapped_column(String(40), index=True)
+    scope: Mapped[str] = mapped_column(String(40), default="overall", index=True)
+    matches_played: Mapped[int | None] = mapped_column(Integer)
+    goals_for: Mapped[float | None] = mapped_column(Float)
+    goals_against: Mapped[float | None] = mapped_column(Float)
+    xg_for: Mapped[float | None] = mapped_column(Float)
+    xg_against: Mapped[float | None] = mapped_column(Float)
+    shots: Mapped[float | None] = mapped_column(Float)
+    shots_on_target: Mapped[float | None] = mapped_column(Float)
+    corners_for: Mapped[float | None] = mapped_column(Float)
+    corners_against: Mapped[float | None] = mapped_column(Float)
+    cards: Mapped[float | None] = mapped_column(Float)
+    btts_rate: Mapped[float | None] = mapped_column(Float)
+    over_1_5_rate: Mapped[float | None] = mapped_column(Float)
+    over_2_5_rate: Mapped[float | None] = mapped_column(Float)
+    over_3_5_rate: Mapped[float | None] = mapped_column(Float)
+    source_provider: Mapped[str | None] = mapped_column(String(80), index=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text)
+
+
+class PlayerSeasonStatistic(TimestampMixin, Base):
+    __tablename__ = "player_season_statistics"
+    __table_args__ = (UniqueConstraint("player_id", "team_id", "competition_id", "season", name="uq_player_season_stat"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), index=True)
+    competition_id: Mapped[int | None] = mapped_column(ForeignKey("competitions.id"), index=True)
+    season: Mapped[str] = mapped_column(String(40), index=True)
+    appearances: Mapped[int | None] = mapped_column(Integer)
+    minutes: Mapped[float | None] = mapped_column(Float)
+    goals: Mapped[float | None] = mapped_column(Float)
+    assists: Mapped[float | None] = mapped_column(Float)
+    xg: Mapped[float | None] = mapped_column(Float)
+    xa: Mapped[float | None] = mapped_column(Float)
+    shots: Mapped[float | None] = mapped_column(Float)
+    passes: Mapped[float | None] = mapped_column(Float)
+    rating: Mapped[float | None] = mapped_column(Float)
+    yellow_cards: Mapped[float | None] = mapped_column(Float)
+    red_cards: Mapped[float | None] = mapped_column(Float)
+    source_provider: Mapped[str | None] = mapped_column(String(80), index=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text)
+
+
 class Injury(TimestampMixin, Base):
     __tablename__ = "injuries"
 
@@ -369,6 +458,47 @@ class ApiUsage(TimestampMixin, Base):
     rate_limit_remaining: Mapped[int | None] = mapped_column(Integer)
     period_start: Mapped[datetime] = mapped_column(DateTime, index=True)
     period_end: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class CacheEntry(Base):
+    __tablename__ = "cache_entries"
+    __table_args__ = (UniqueConstraint("cache_key", name="uq_cache_entry_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cache_key: Mapped[str] = mapped_column(String(240), index=True)
+    namespace: Mapped[str] = mapped_column(String(80), index=True)
+    payload_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
+
+class DataQualitySnapshot(Base):
+    __tablename__ = "data_quality_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(80), index=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    provider: Mapped[str | None] = mapped_column(String(80), index=True)
+    completeness_score: Mapped[float | None] = mapped_column(Float)
+    freshness_score: Mapped[float | None] = mapped_column(Float)
+    reliability_score: Mapped[float | None] = mapped_column(Float)
+    missing_fields: Mapped[str | None] = mapped_column(Text)
+    warnings: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class ModelAuditLog(Base):
+    __tablename__ = "model_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.id"), index=True)
+    model_name: Mapped[str] = mapped_column(String(120), index=True)
+    market: Mapped[str | None] = mapped_column(String(120), index=True)
+    version: Mapped[str | None] = mapped_column(String(60), index=True)
+    inputs_json: Mapped[str | None] = mapped_column(Text)
+    output_json: Mapped[str | None] = mapped_column(Text)
+    warnings: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
 
 class SyncJob(TimestampMixin, Base):
