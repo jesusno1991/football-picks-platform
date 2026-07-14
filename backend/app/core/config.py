@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
     backend_url: str = Field(default="http://localhost:8000", alias="BACKEND_URL")
     app_timezone: str = Field(default="Europe/Madrid", alias="APP_TIMEZONE")
+    rate_limit_requests_per_minute: int = Field(default=240, alias="RATE_LIMIT_REQUESTS_PER_MINUTE")
 
     admin_token_header: str = "X-Admin-Token"
     minimum_minutes_before_kickoff: int = 15

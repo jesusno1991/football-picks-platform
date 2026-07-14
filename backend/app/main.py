@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from app.core.config import get_settings
 
 
 settings = get_settings()
+_rate_buckets: dict[str, list[float]] = {}
 
 app = FastAPI(title="Football Picks Platform", version="0.1.0")
 
@@ -26,6 +28,10 @@ app.include_router(router)
 
 @app.middleware("http")
 async def add_security_headers(request, call_next):
+    if request.url.path.startswith("/api/") and _is_rate_limited(request):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"detail": "Too many requests"}, status_code=429)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -34,6 +40,18 @@ async def add_security_headers(request, call_next):
     if settings.environment.lower() == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+def _is_rate_limited(request) -> bool:
+    limit = max(settings.rate_limit_requests_per_minute, 1)
+    now = time()
+    window_start = now - 60
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    bucket = [timestamp for timestamp in _rate_buckets.get(client_ip, []) if timestamp >= window_start]
+    bucket.append(now)
+    _rate_buckets[client_ip] = bucket
+    return len(bucket) > limit
 
 static_dir = Path(__file__).resolve().parent / "static"
 if static_dir.exists():
