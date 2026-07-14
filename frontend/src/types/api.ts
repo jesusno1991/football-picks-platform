@@ -116,6 +116,7 @@ export type CalendarDay = {
   date: string
   match_count: number
   pick_count: number
+  publishable_pick_count: number
   published_pick_count: number
   competition_count: number
 }
@@ -220,6 +221,30 @@ export type AdminStatus = {
   provider_data_coverage: number
   latest_sync_jobs: Record<string, unknown>[]
   api_usage: Record<string, unknown>[]
+}
+
+export type ModelHealth = {
+  status: string
+  data_status: string
+  active_provider: string
+  api_football_configured: boolean
+  flashscore_configured: boolean
+  last_sync_at?: string | null
+  next_sync_hint: string
+  matches_downloaded: number
+  matches_analyzed: number
+  markets_evaluated: number
+  candidate_picks: number
+  rejected_picks: number
+  publishable_picks: number
+  average_calculation_time_ms?: number | null
+  recent_errors: Record<string, unknown>[]
+  unmapped_entities: number
+  matches_without_odds: number
+  matches_without_statistics: number
+  incomplete_competitions: number
+  api_usage: Record<string, unknown>[]
+  rate_limits: Record<string, unknown>[]
 }
 
 export type MarketRanking = {

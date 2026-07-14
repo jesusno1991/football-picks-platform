@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type React from 'react'
-import { BarChart3, CalendarDays, Database, FileClock, Home, ListChecks, Search, Shield, Star, Table2, Trophy, Users } from 'lucide-react'
+import { Activity, BarChart3, CalendarDays, Database, FileClock, Home, ListChecks, Search, Shield, Star, Table2, Trophy, Users } from 'lucide-react'
 import { AdminPage } from './AdminPage'
 import { ArchivePage } from './ArchivePage'
 import { CalendarPage } from './CalendarPage'
 import { CompetitionsPage } from './CompetitionsPage'
 import { DashboardPage } from './DashboardPage'
 import { HomePage } from './HomePage'
+import { ModelHealthPage } from './ModelHealthPage'
 import { PicksPage } from './PicksPage'
 import { PlayersPage } from './PlayersPage'
 import { StandingsPage } from './StandingsPage'
@@ -27,6 +28,7 @@ type Page =
   | 'predicciones'
   | 'estadisticas'
   | 'archivo'
+  | 'modelo'
   | 'administracion'
 
 const nav: { page: Page; label: string; icon: React.ReactNode }[] = [
@@ -42,6 +44,7 @@ const nav: { page: Page; label: string; icon: React.ReactNode }[] = [
   { page: 'predicciones', label: 'Predicciones', icon: <ListChecks size={17} /> },
   { page: 'estadisticas', label: 'Estadisticas', icon: <BarChart3 size={17} /> },
   { page: 'archivo', label: 'Archivo', icon: <FileClock size={17} /> },
+  { page: 'modelo', label: 'Modelo', icon: <Activity size={17} /> },
   { page: 'administracion', label: 'Admin', icon: <Shield size={17} /> },
 ]
 
@@ -74,6 +77,7 @@ export function App() {
       {page === 'predicciones' ? <PicksPage /> : null}
       {page === 'estadisticas' ? <StatsPage /> : null}
       {page === 'archivo' ? <ArchivePage /> : null}
+      {page === 'modelo' ? <ModelHealthPage /> : null}
       {page === 'administracion' ? <AdminPage /> : null}
     </main>
   )

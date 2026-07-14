@@ -52,6 +52,10 @@ export function HomePage() {
 
   const today = formatDateInput(new Date())
   const selectedDate = new Date(`${date}T12:00:00`)
+  const setMonthYear = (nextYear: number, nextMonth: number) => {
+    const day = Math.min(selectedDate.getDate(), new Date(nextYear, nextMonth, 0).getDate())
+    setDate(formatDateInput(new Date(nextYear, nextMonth - 1, day)))
+  }
 
   return (
     <div className="grid gap-5 lg:grid-cols-[440px_1fr]">
@@ -67,6 +71,14 @@ export function HomePage() {
             <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(-1)} aria-label="Dia anterior"><ChevronLeft size={18} /></button>
             <input className="w-full rounded-lg border border-line px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
             <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)} aria-label="Dia siguiente"><ChevronRight size={18} /></button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <select className="rounded-lg border border-line px-3 py-2 font-bold" value={month} onChange={(event) => setMonthYear(year, Number(event.target.value))}>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{new Date(2026, value - 1, 1).toLocaleString('es-ES', { month: 'long' })}</option>)}
+            </select>
+            <select className="rounded-lg border border-line px-3 py-2 font-bold" value={year} onChange={(event) => setMonthYear(Number(event.target.value), month)}>
+              {Array.from({ length: 9 }, (_, index) => new Date().getFullYear() - 4 + index).map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
           </div>
           <MonthCalendar selectedDate={selectedDate} selected={date} days={calendarDays} onSelect={setDate} />
         </div>
@@ -86,12 +98,14 @@ export function HomePage() {
   )
 }
 
-function MonthCalendar({ selectedDate, selected, days, onSelect }: { selectedDate: Date; selected: string; days: { date: string; match_count: number; published_pick_count: number }[]; onSelect: (date: string) => void }) {
+type CalendarCellStats = { date: string; match_count: number; pick_count: number; publishable_pick_count: number; published_pick_count: number }
+
+function MonthCalendar({ selectedDate, selected, days, onSelect }: { selectedDate: Date; selected: string; days: CalendarCellStats[]; onSelect: (date: string) => void }) {
   const first = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
   const last = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
   const startOffset = (first.getDay() + 6) % 7
   const byDate = new Map(days.map((day) => [day.date, day]))
-  const cells: { key: string; date: string; label: string; stats?: { date: string; match_count: number; published_pick_count: number } }[] = [
+  const cells: { key: string; date: string; label: string; stats?: CalendarCellStats }[] = [
     ...Array.from({ length: startOffset }, (_, index) => ({ key: `empty-${index}`, date: '', label: '' })),
     ...Array.from({ length: last.getDate() }, (_, index) => {
       const day = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), index + 1)
@@ -109,7 +123,8 @@ function MonthCalendar({ selectedDate, selected, days, onSelect }: { selectedDat
           <button key={cell.key} onClick={() => onSelect(cell.date)} className={`min-h-[66px] rounded-lg border p-1 text-left text-xs ${cell.date === selected ? 'border-cyan-500 bg-cyan-50' : 'border-line bg-white'}`}>
             <div className="font-black">{cell.label}</div>
             <div className="mt-1 font-bold text-slate-600">{cell.stats?.match_count ?? 0} partidos</div>
-            <div className="font-bold text-cyan-700">{cell.stats?.published_pick_count ?? 0} picks</div>
+            <div className="font-bold text-cyan-700">{cell.stats?.publishable_pick_count ?? 0} publicables</div>
+            <div className="font-bold text-slate-500">{cell.stats?.pick_count ?? 0} pred.</div>
           </button>
         ) : <div key={cell.key} />)}
       </div>

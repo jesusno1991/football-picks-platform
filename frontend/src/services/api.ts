@@ -7,6 +7,7 @@ import type {
   GenericInfo,
   MarketEvaluation,
   MarketRanking,
+  ModelHealth,
   Match,
   OddsRow,
   Overview,
@@ -122,6 +123,11 @@ export async function fetchAdminStatus() {
   return response.data
 }
 
+export async function fetchModelHealth() {
+  const response = await api.get<ModelHealth>('/api/model-health')
+  return response.data
+}
+
 export async function fetchUltimateReport() {
   const response = await api.get<Record<string, unknown>>('/api/admin/ultimate-report')
   return response.data
@@ -129,5 +135,13 @@ export async function fetchUltimateReport() {
 
 export async function fetchProfitCurve() {
   const response = await api.get<{ date: string; profit: number; cumulative_profit: number }[]>('/api/statistics/profit-curve')
+  return response.data
+}
+
+export async function runAdminAction(path: string, token: string, params?: Record<string, string | number | undefined>) {
+  const response = await api.post<Record<string, unknown>>(path, null, {
+    params,
+    headers: { 'X-Admin-Token': token },
+  })
   return response.data
 }

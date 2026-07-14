@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from app.models import Competition, Match, Team
+from app.models import Competition, Match, Prediction, PredictionSystem, Team
 from app.services.collection_service import collect_mock_data
 from app.services.prediction_service import generate_predictions
 
@@ -75,6 +75,58 @@ def test_matches_range_and_calendar_month(client, db):
     assert len(calendar_rows) == 31
     assert calendar_rows[0]["date"] == "2026-08-01"
     assert calendar_rows[0]["match_count"] == 1
+    assert "publishable_pick_count" in calendar_rows[0]
+
+
+def test_calendar_month_counts_publishable_picks(client, db):
+    competition, home, away = _seed_calendar_entities(db)
+    system = PredictionSystem(
+        code="TEST_SYSTEM",
+        name="Test",
+        description="Test system",
+        market="test",
+        minimum_probability=0.0,
+        minimum_value=0.0,
+        is_active=True,
+    )
+    db.add(system)
+    db.flush()
+    match = Match(
+        external_id="publishable-calendar",
+        competition_id=competition.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_at=datetime(2026, 8, 3, 10),
+        status="scheduled",
+        venue=None,
+        round=None,
+        season="2026",
+    )
+    db.add(match)
+    db.flush()
+    db.add(
+        Prediction(
+            match_id=match.id,
+            system_id=system.id,
+            market="goals",
+            selection="over",
+            line=3.5,
+            predicted_probability=0.7,
+            fair_odds=1.43,
+            available_odds=2.0,
+            expected_value=0.4,
+            confidence=0.8,
+            recommended_stake=1,
+            explanation="test",
+            status="ready_to_publish",
+        )
+    )
+    db.commit()
+
+    calendar_rows = client.get("/api/calendar/month", params={"year": 2026, "month": 8}).json()
+    target = next(row for row in calendar_rows if row["date"] == "2026-08-03")
+    assert target["pick_count"] == 1
+    assert target["publishable_pick_count"] == 1
 
 
 def test_generate_predictions_creates_prematch_pick(client):
@@ -148,6 +200,20 @@ def test_information_platform_endpoints_are_available(client):
     admin = client.get("/api/admin/status")
     assert admin.status_code == 200
     assert admin.json()["matches"] >= 1
+
+
+def test_model_health_endpoint_reports_operational_counts(client):
+    client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
+    client.post("/api/admin/generate-predictions", headers={"X-Admin-Token": "test-secret"})
+
+    response = client.get("/api/model-health")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] in {"operativo", "degradado", "error"}
+    assert data["matches_downloaded"] >= 1
+    assert data["candidate_picks"] >= 1
+    assert "matches_without_odds" in data
 
 
 def test_statistics_overview_empty_is_safe(client):

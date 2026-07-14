@@ -18,6 +18,7 @@ from app.models import (
     HistoricalSyncWindow,
     Match,
     MarketRanking,
+    MarketEvaluation,
     ModelAuditLog,
     Odds,
     Player,
@@ -29,6 +30,7 @@ from app.models import (
     Referee,
     SquadMember,
     Standing,
+    SyncError,
     SyncJob,
     SystemPerformance,
     Team,
@@ -47,6 +49,7 @@ from app.schemas.schemas import (
     MarketRankingRead,
     MatchDetailRead,
     MatchListRead,
+    ModelHealthRead,
     OddsRead,
     PredictionRead,
     SearchResultRead,
@@ -93,32 +96,34 @@ def get_matches(
     country: str | None = None,
     competition_id: int | None = None,
     team: str | None = None,
+    limit: int = Query(default=500, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[MatchListRead]:
     if match_date:
         _ensure_date_loaded(db, match_date)
-    matches = queries.list_matches(db, match_date, country, competition_id, team)
+    matches = queries.list_matches(db, match_date, country, competition_id, team, limit=limit, offset=offset)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
 
 
 @router.get("/matches/live", response_model=list[MatchListRead])
 def get_live_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
-    matches = [match for match in queries.list_matches(db) if _is_live_status(match.status)]
+    matches = queries.list_matches_by_statuses(db, {"live", "1h", "2h", "ht", "et", "p", "in_play"}, limit=100)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
 
 
 @router.get("/matches/upcoming", response_model=list[MatchListRead])
 def get_upcoming_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
-    matches = [match for match in queries.list_matches(db) if match.status in {"scheduled", "not_started", "NS", "TBD"}][:100]
+    matches = queries.list_matches_by_statuses(db, {"scheduled", "not_started", "NS", "TBD"}, limit=100)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
 
 
 @router.get("/matches/results", response_model=list[MatchListRead])
 def get_result_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
-    matches = [match for match in queries.list_matches(db) if match.status in {"finished", "FT", "AET", "PEN"}][:100]
+    matches = queries.list_matches_by_statuses(db, {"finished", "FT", "AET", "PEN"}, limit=100)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
 
@@ -127,11 +132,13 @@ def get_result_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
 def get_matches_range(
     date_from: date,
     date_to: date,
+    limit: int = Query(default=1000, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[MatchListRead]:
     if date_to < date_from:
         raise HTTPException(status_code=400, detail="date_to debe ser mayor o igual que date_from")
-    matches = queries.list_matches_range(db, date_from, date_to)
+    matches = queries.list_matches_range(db, date_from, date_to, limit=limit, offset=offset)
     pick_counts = queries.pick_counts_by_match(db)
     return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
 
@@ -155,12 +162,16 @@ def get_calendar_month(year: int, month: int, db: Session = Depends(get_db)) -> 
         grouped[local_day]["matches"] = int(grouped[local_day]["matches"]) + 1
         grouped[local_day]["competitions"].add(match.competition_id)  # type: ignore[union-attr]
         grouped[local_day]["picks"] = int(grouped[local_day]["picks"]) + len(match.predictions)
+        grouped[local_day]["publishable"] = int(grouped[local_day].get("publishable", 0)) + len(
+            [p for p in match.predictions if p.status in {"published", "ready_to_publish", "publishable"}]
+        )
         grouped[local_day]["published"] = int(grouped[local_day]["published"]) + len([p for p in match.predictions if p.status == "published"])
     return [
         CalendarDayRead(
             date=day.isoformat(),
             match_count=int(values["matches"]),
             pick_count=int(values["picks"]),
+            publishable_pick_count=int(values.get("publishable", 0)),
             published_pick_count=int(values["published"]),
             competition_count=len(values["competitions"]),  # type: ignore[arg-type]
         )
@@ -304,8 +315,7 @@ def get_match_h2h(match_id: int, db: Session = Depends(get_db)) -> GenericInfoRe
             "marcador": _score_label(item),
             "competicion": item.competition.name,
         }
-        for item in queries.list_matches(db)
-        if {item.home_team_id, item.away_team_id} == {match.home_team_id, match.away_team_id} and item.id != match.id
+        for item in queries.list_h2h_matches(db, match.home_team_id, match.away_team_id, match.id)
     ][:10]
     return _generic(rows)
 
@@ -636,6 +646,102 @@ def admin_status(db: Session = Depends(get_db)) -> AdminStatusRead:
 @router.get("/admin/ultimate-report")
 def admin_ultimate_report(db: Session = Depends(get_db)):
     return foundation_report(db)
+
+
+@router.get("/model-health", response_model=ModelHealthRead)
+def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
+    settings = get_settings()
+    provider = get_provider()
+    latest_job = db.scalar(select(SyncJob).order_by(SyncJob.created_at.desc()).limit(1))
+    recent_errors = [
+        {
+            "id": row.id,
+            "provider": row.provider,
+            "endpoint": row.endpoint,
+            "entity_type": row.entity_type,
+            "message": row.message[:240],
+            "created_at": row.created_at.isoformat(),
+        }
+        for row in db.scalars(select(SyncError).order_by(SyncError.created_at.desc()).limit(10))
+    ]
+    matches_downloaded = int(db.scalar(select(func.count(Match.id))) or 0)
+    matches_analyzed = int(db.scalar(select(func.count(func.distinct(Prediction.match_id)))) or 0)
+    markets_evaluated = int(db.scalar(select(func.count(MarketEvaluation.id))) or 0)
+    candidate_picks = int(db.scalar(select(func.count(Prediction.id)).where(Prediction.predicted_probability.is_not(None))) or 0)
+    rejected_picks = int(db.scalar(select(func.count(Prediction.id)).where(Prediction.status.in_(["rejected", "not_published", "no_bet"]))) or 0)
+    publishable_picks = int(db.scalar(select(func.count(Prediction.id)).where(Prediction.status.in_(["published", "ready_to_publish", "publishable"]))) or 0)
+    matches_without_odds = int(
+        db.scalar(
+            select(func.count(Match.id))
+            .outerjoin(Odds, Odds.match_id == Match.id)
+            .where(Odds.id.is_(None))
+        )
+        or 0
+    )
+    matches_without_statistics = int(
+        db.scalar(
+            select(func.count(Match.id))
+            .outerjoin(TeamMatchStatistics, TeamMatchStatistics.match_id == Match.id)
+            .where(TeamMatchStatistics.id.is_(None))
+        )
+        or 0
+    )
+    incomplete_competitions = int(
+        db.scalar(
+            select(func.count(Competition.id))
+            .outerjoin(Standing, Standing.competition_id == Competition.id)
+            .where(Standing.id.is_(None))
+        )
+        or 0
+    )
+    usage_rows = queries.list_api_usage(db, limit=20)
+    rate_limits = [
+        {"provider": row.provider, "endpoint": row.endpoint, "remaining": row.rate_limit_remaining}
+        for row in usage_rows
+        if row.rate_limit_remaining is not None
+    ]
+    if recent_errors:
+        status = "degradado"
+        data_status = "Datos con errores recientes"
+    elif matches_without_odds and matches_downloaded and matches_without_odds / max(matches_downloaded, 1) > 0.75:
+        status = "degradado"
+        data_status = "Muchas cuotas pendientes"
+    else:
+        status = "operativo"
+        data_status = "Datos disponibles"
+    return ModelHealthRead(
+        status=status,
+        data_status=data_status,
+        active_provider=provider.__class__.__name__,
+        api_football_configured=bool(settings.api_football_key),
+        flashscore_configured=bool(settings.rapidapi_key),
+        last_sync_at=latest_job.finished_at if latest_job else None,
+        next_sync_hint="Usar Admin > sincronizar fecha o backfill programado",
+        matches_downloaded=matches_downloaded,
+        matches_analyzed=matches_analyzed,
+        markets_evaluated=markets_evaluated,
+        candidate_picks=candidate_picks,
+        rejected_picks=rejected_picks,
+        publishable_picks=publishable_picks,
+        average_calculation_time_ms=None,
+        recent_errors=recent_errors,
+        unmapped_entities=queries.count_unmatched_mappings(db),
+        matches_without_odds=matches_without_odds,
+        matches_without_statistics=matches_without_statistics,
+        incomplete_competitions=incomplete_competitions,
+        api_usage=[
+            {
+                "provider": row.provider,
+                "endpoint": row.endpoint,
+                "requests": row.requests_count,
+                "success": row.success_count,
+                "errors": row.error_count,
+                "period_start": row.period_start.isoformat(),
+            }
+            for row in usage_rows
+        ],
+        rate_limits=rate_limits,
+    )
 
 
 @router.post("/admin/collect", dependencies=[Depends(require_admin)])

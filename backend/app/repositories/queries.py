@@ -42,6 +42,8 @@ def list_matches(
     country: str | None = None,
     competition_id: int | None = None,
     team: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
 ) -> list[Match]:
     stmt = match_query()
     if match_date:
@@ -56,12 +58,42 @@ def list_matches(
         stmt = stmt.join(Match.home_team.of_type(Team), isouter=True).where(
             (Team.name.ilike(like)) | (Team.short_name.ilike(like))
         )
-    return list(db.scalars(stmt.order_by(Match.kickoff_at)).unique())
+    return list(db.scalars(stmt.order_by(Match.kickoff_at).offset(offset).limit(limit)).unique())
 
 
-def list_matches_range(db: Session, date_from: date, date_to: date) -> list[Match]:
+def list_matches_range(db: Session, date_from: date, date_to: date, limit: int = 5000, offset: int = 0) -> list[Match]:
     start, end = local_range_bounds_utc_naive(date_from, date_to, get_settings().app_timezone)
-    return list(db.scalars(match_query().where(Match.kickoff_at >= start, Match.kickoff_at < end).order_by(Match.kickoff_at)).unique())
+    return list(
+        db.scalars(
+            match_query()
+            .where(Match.kickoff_at >= start, Match.kickoff_at < end)
+            .order_by(Match.kickoff_at)
+            .offset(offset)
+            .limit(limit)
+        ).unique()
+    )
+
+
+def list_matches_by_statuses(db: Session, statuses: set[str], limit: int = 100) -> list[Match]:
+    normalized = {status.lower() for status in statuses}
+    stmt = match_query().where(func.lower(Match.status).in_(normalized)).order_by(Match.kickoff_at).limit(limit)
+    return list(db.scalars(stmt).unique())
+
+
+def list_h2h_matches(db: Session, home_team_id: int, away_team_id: int, exclude_match_id: int, limit: int = 10) -> list[Match]:
+    stmt = (
+        match_query()
+        .where(
+            or_(
+                and_(Match.home_team_id == home_team_id, Match.away_team_id == away_team_id),
+                and_(Match.home_team_id == away_team_id, Match.away_team_id == home_team_id),
+            ),
+            Match.id != exclude_match_id,
+        )
+        .order_by(Match.kickoff_at.desc())
+        .limit(limit)
+    )
+    return list(db.scalars(stmt).unique())
 
 
 def get_match(db: Session, match_id: int) -> Match | None:
@@ -302,6 +334,18 @@ def pick_counts_by_match(db: Session) -> dict[int, int]:
     rows = db.execute(
         select(Prediction.match_id, func.count(Prediction.id))
         .where(Prediction.predicted_probability.is_not(None))
+        .group_by(Prediction.match_id)
+    ).all()
+    return {int(match_id): int(count) for match_id, count in rows}
+
+
+def publishable_counts_by_match(db: Session) -> dict[int, int]:
+    rows = db.execute(
+        select(Prediction.match_id, func.count(Prediction.id))
+        .where(
+            Prediction.status.in_(["published", "ready_to_publish", "publishable"]),
+            _not_blocked_publish_market(),
+        )
         .group_by(Prediction.match_id)
     ).all()
     return {int(match_id): int(count) for match_id, count in rows}

@@ -1,9 +1,28 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useAdminStatus, useMarketRankings, useUltimateReport } from '../hooks/queries'
+import { runAdminAction } from '../services/api'
+import { formatDateInput } from '../utils/format'
 
 export function AdminPage() {
+  const queryClient = useQueryClient()
+  const today = formatDateInput(new Date())
+  const [token, setToken] = useState(localStorage.getItem('admin-token') ?? '')
+  const [date, setDate] = useState(today)
+  const [dateFrom, setDateFrom] = useState(today)
+  const [dateTo, setDateTo] = useState(today)
+  const [lastResult, setLastResult] = useState<Record<string, unknown> | null>(null)
   const { data, isLoading } = useAdminStatus()
   const { data: rankings = [] } = useMarketRankings()
   const { data: report } = useUltimateReport()
+  const action = useMutation({
+    mutationFn: ({ path, params }: { path: string; params?: Record<string, string | number | undefined> }) => runAdminAction(path, token, params),
+    onSuccess: (result) => {
+      setLastResult(result)
+      localStorage.setItem('admin-token', token)
+      queryClient.invalidateQueries()
+    },
+  })
   if (isLoading || !data) return <div className="card p-6">Cargando administracion...</div>
   const metrics = [
     ['Proveedor activo', data.active_provider],
@@ -35,6 +54,24 @@ export function AdminPage() {
       <div className="card p-5">
         <h2 className="text-2xl font-black">Administracion</h2>
         <p className="text-sm font-semibold text-slate-500">Estado de proveedores, datos sincronizados y control operativo.</p>
+      </div>
+      <div className="card p-5">
+        <h3 className="text-lg font-black">Acciones operativas</h3>
+        <p className="mt-1 text-sm font-semibold text-slate-500">Estas acciones requieren el token admin. La web no guarda credenciales externas ni claves de API.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+          <input className="rounded-lg border border-line px-3 py-2" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Token admin" />
+          <input className="rounded-lg border border-line px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <button className="rounded-lg bg-cyan-500 px-4 py-2 font-black text-white" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/sync-day', params: { date } })}>Sincronizar fecha</button>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto_auto_auto]">
+          <input className="rounded-lg border border-line px-3 py-2" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <input className="rounded-lg border border-line px-3 py-2" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/import-range', params: { date_from: dateFrom, date_to: dateTo } })}>Importar rango</button>
+          <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/generate-predictions' })}>Recalcular picks</button>
+          <button className="rounded-lg border border-line px-4 py-2 font-black" disabled={!token || action.isPending} onClick={() => action.mutate({ path: '/api/admin/rank-markets' })}>Rankear mercados</button>
+        </div>
+        {action.error ? <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">Error ejecutando accion.</div> : null}
+        {lastResult ? <pre className="mt-3 max-h-52 overflow-auto rounded-lg bg-slate-950 p-3 text-xs font-semibold text-white">{JSON.stringify(lastResult, null, 2)}</pre> : null}
       </div>
       <div className="grid gap-3 md:grid-cols-5">
         {metrics.map(([label, value]) => <div key={String(label)} className="card p-4"><div className="text-xs font-black text-slate-500">{label}</div><div className="mt-2 text-xl font-black">{String(value)}</div></div>)}

@@ -51,6 +51,7 @@ class CalendarDayRead(BaseModel):
     date: str
     match_count: int
     pick_count: int
+    publishable_pick_count: int = 0
     published_pick_count: int
     competition_count: int
 
@@ -246,6 +247,30 @@ class AdminStatusRead(BaseModel):
     provider_data_coverage: int = 0
     latest_sync_jobs: list[dict] = Field(default_factory=list)
     api_usage: list[dict] = Field(default_factory=list)
+
+
+class ModelHealthRead(BaseModel):
+    status: str
+    data_status: str
+    active_provider: str
+    api_football_configured: bool
+    flashscore_configured: bool
+    last_sync_at: datetime | None = None
+    next_sync_hint: str
+    matches_downloaded: int
+    matches_analyzed: int
+    markets_evaluated: int
+    candidate_picks: int
+    rejected_picks: int
+    publishable_picks: int
+    average_calculation_time_ms: float | None = None
+    recent_errors: list[dict] = Field(default_factory=list)
+    unmapped_entities: int
+    matches_without_odds: int
+    matches_without_statistics: int
+    incomplete_competitions: int
+    api_usage: list[dict] = Field(default_factory=list)
+    rate_limits: list[dict] = Field(default_factory=list)
 
 
 class MarketRankingRead(BaseModel):

@@ -10,6 +10,7 @@ import {
   fetchMatchMarkets,
   fetchMatchOdds,
   fetchMarketRankings,
+  fetchModelHealth,
   fetchMatches,
   fetchOverview,
   fetchPlayers,
@@ -60,6 +61,10 @@ export function useTipstrrMarketPicks(date: string, decision?: string) {
 
 export function useMarketRankings() {
   return useQuery({ queryKey: ['market-rankings'], queryFn: fetchMarketRankings })
+}
+
+export function useModelHealth() {
+  return useQuery({ queryKey: ['model-health'], queryFn: fetchModelHealth })
 }
 
 export function useOverview() {
