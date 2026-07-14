@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { MarketEvaluation, Match, Overview, Prediction } from '../types/api'
+import type { MarketEvaluation, Match, Overview, Prediction, TipstrrMarketPick } from '../types/api'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
@@ -22,6 +22,11 @@ export async function fetchMatchMarkets(id: number) {
 
 export async function fetchPredictions(status?: string, date?: string) {
   const response = await api.get<Prediction[]>('/api/predictions', { params: { status, date } })
+  return response.data
+}
+
+export async function fetchTipstrrMarketPicks(date?: string, decision?: string) {
+  const response = await api.get<TipstrrMarketPick[]>('/api/tipstrr-market-picks', { params: { date, decision } })
   return response.data
 }
 

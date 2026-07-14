@@ -9,7 +9,15 @@ from app.collectors.factory import get_provider
 from app.database import get_db, init_db
 from app.models import Competition, Match, Odds, Prediction, SystemPerformance, Team, TeamForm, TeamMatchStatistics
 from app.repositories import queries
-from app.schemas.schemas import CompetitionRead, MarketEvaluationRead, MatchDetailRead, MatchListRead, PredictionRead, TeamRead
+from app.schemas.schemas import (
+    CompetitionRead,
+    MarketEvaluationRead,
+    MatchDetailRead,
+    MatchListRead,
+    PredictionRead,
+    TeamRead,
+    TipstrrMarketPickRead,
+)
 from app.services.collection_service import collect_mock_data, collect_schedule_data
 from app.services.goal_market_engine import evaluate_match_markets
 from app.services.prediction_service import generate_predictions
@@ -21,6 +29,7 @@ from app.services.statistics_service import (
     performance_by_system,
     profit_curve,
 )
+from app.services.tipstrr_market_service import list_tipstrr_market_picks
 
 router = APIRouter(prefix="/api")
 
@@ -72,6 +81,17 @@ def get_match_markets(match_id: int, db: Session = Depends(get_db)) -> list[Mark
     if not queries.get_match(db, match_id):
         raise HTTPException(status_code=404, detail="Partido no encontrado")
     return evaluate_match_markets(db, match_id)
+
+
+@router.get("/tipstrr-market-picks", response_model=list[TipstrrMarketPickRead])
+def get_tipstrr_market_picks(
+    match_date: date | None = Query(default=None, alias="date"),
+    decision: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[TipstrrMarketPickRead]:
+    target_date = match_date or date.today()
+    _ensure_date_loaded(db, target_date)
+    return list_tipstrr_market_picks(db, target_date, decision)
 
 
 @router.get("/competitions", response_model=list[CompetitionRead])

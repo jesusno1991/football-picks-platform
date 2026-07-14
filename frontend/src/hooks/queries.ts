@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchMatch, fetchMatches, fetchMatchMarkets, fetchOverview, fetchPredictions, fetchProfitCurve } from '../services/api'
+import { fetchMatch, fetchMatches, fetchMatchMarkets, fetchOverview, fetchPredictions, fetchProfitCurve, fetchTipstrrMarketPicks } from '../services/api'
 
 export function useMatches(date: string) {
   return useQuery({ queryKey: ['matches', date], queryFn: () => fetchMatches(date) })
@@ -15,6 +15,13 @@ export function useMatchMarkets(id?: number) {
 
 export function usePredictions(status?: string, date?: string) {
   return useQuery({ queryKey: ['predictions', status ?? 'all', date ?? 'all'], queryFn: () => fetchPredictions(status, date) })
+}
+
+export function useTipstrrMarketPicks(date: string, decision?: string) {
+  return useQuery({
+    queryKey: ['tipstrr-market-picks', date, decision ?? 'all'],
+    queryFn: () => fetchTipstrrMarketPicks(date, decision),
+  })
 }
 
 export function useOverview() {

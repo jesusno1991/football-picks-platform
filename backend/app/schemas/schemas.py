@@ -111,6 +111,32 @@ class MarketEvaluationRead(BaseModel):
     alerts: list[str]
 
 
+class TipstrrMarketPickRead(BaseModel):
+    match_id: int
+    external_id: str
+    match_name: str
+    competition_name: str
+    country: str
+    kickoff_at: datetime
+    group: str
+    family: str
+    period: str
+    team_scope: str
+    selection: str
+    line: float | None = None
+    label: str
+    model_probability: float | None = None
+    fair_odds: float | None = None
+    market_odds: float | None = None
+    bookmaker: str | None = None
+    expected_value: float | None = None
+    merlin_score: float
+    data_quality: float
+    risk_level: str
+    decision: str
+    reason: str
+
+
 class MatchDetailRead(MatchListRead):
     home_form: TeamFormRead | None = None
     away_form: TeamFormRead | None = None

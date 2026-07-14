@@ -62,6 +62,32 @@ export type MarketEvaluation = {
   alerts: string[]
 }
 
+export type TipstrrMarketPick = {
+  match_id: number
+  external_id: string
+  match_name: string
+  competition_name: string
+  country: string
+  kickoff_at: string
+  group: string
+  family: string
+  period: string
+  team_scope: string
+  selection: string
+  line?: number | null
+  label: string
+  model_probability?: number | null
+  fair_odds?: number | null
+  market_odds?: number | null
+  bookmaker?: string | null
+  expected_value?: number | null
+  merlin_score: number
+  data_quality: number
+  risk_level: string
+  decision: string
+  reason: string
+}
+
 export type Match = {
   id: number
   external_id: string
