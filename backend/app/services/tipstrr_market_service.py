@@ -171,6 +171,8 @@ def _decision_for_market(
         return "SIN_CUOTA", "Modelo disponible, falta cuota real del proveedor"
     if match.kickoff_at <= datetime.utcnow():
         return "WATCH", "Partido ya iniciado o cerrado"
+    if odd.odds < 1.25 or odd.odds > 8:
+        return "WATCH", "Cuota fuera de rango profesional"
     if spec.family in {"correct_score", "first_goal", "qualification"}:
         return "WATCH", "Mercado de alta varianza o contexto especial, no publicacion automatica"
     if _is_blocked_low_goal_publish(spec):
