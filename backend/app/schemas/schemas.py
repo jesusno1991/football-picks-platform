@@ -42,9 +42,18 @@ class MatchListRead(BaseModel):
     home_team: TeamRead
     away_team: TeamRead
     pick_count: int = 0
+    publishable_pick_count: int = 0
     main_probability: float | None = None
     best_odds: float | None = None
     confidence: float | None = None
+    best_market: str | None = None
+    merlin_score: float | None = None
+    data_quality_score: float | None = None
+    has_statistics: bool = False
+    has_lineups: bool = False
+    has_odds: bool = False
+    has_prediction: bool = False
+    has_pick: bool = False
 
 
 class CalendarDayRead(BaseModel):

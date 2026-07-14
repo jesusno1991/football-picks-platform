@@ -33,6 +33,7 @@ def match_query() -> Select[tuple[Match]]:
         joinedload(Match.competition),
         joinedload(Match.home_team),
         joinedload(Match.away_team),
+        joinedload(Match.predictions),
     )
 
 
@@ -349,6 +350,34 @@ def publishable_counts_by_match(db: Session) -> dict[int, int]:
         .group_by(Prediction.match_id)
     ).all()
     return {int(match_id): int(count) for match_id, count in rows}
+
+
+def data_availability_by_match(db: Session, match_ids: list[int]) -> dict[int, dict[str, bool]]:
+    if not match_ids:
+        return {}
+    availability = {
+        match_id: {"statistics": False, "lineups": False, "odds": False}
+        for match_id in match_ids
+    }
+    for match_id, count in db.execute(
+        select(TeamMatchStatistics.match_id, func.count(TeamMatchStatistics.id))
+        .where(TeamMatchStatistics.match_id.in_(match_ids))
+        .group_by(TeamMatchStatistics.match_id)
+    ):
+        availability[int(match_id)]["statistics"] = int(count) > 0
+    for match_id, count in db.execute(
+        select(FixtureLineup.match_id, func.count(FixtureLineup.id))
+        .where(FixtureLineup.match_id.in_(match_ids))
+        .group_by(FixtureLineup.match_id)
+    ):
+        availability[int(match_id)]["lineups"] = int(count) > 0
+    for match_id, count in db.execute(
+        select(Odds.match_id, func.count(Odds.id))
+        .where(Odds.match_id.in_(match_ids))
+        .group_by(Odds.match_id)
+    ):
+        availability[int(match_id)]["odds"] = int(count) > 0
+    return availability
 
 
 def _not_blocked_publish_market():

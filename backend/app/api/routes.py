@@ -104,28 +104,39 @@ def get_matches(
         _ensure_date_loaded(db, match_date)
     matches = queries.list_matches(db, match_date, country, competition_id, team, limit=limit, offset=offset)
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [
+        _match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id))
+        for match in matches
+    ]
 
 
 @router.get("/matches/live", response_model=list[MatchListRead])
 def get_live_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
     matches = queries.list_matches_by_statuses(db, {"live", "1h", "2h", "ht", "et", "p", "in_play"}, limit=100)
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in matches]
 
 
 @router.get("/matches/upcoming", response_model=list[MatchListRead])
 def get_upcoming_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
     matches = queries.list_matches_by_statuses(db, {"scheduled", "not_started", "NS", "TBD"}, limit=100)
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in matches]
 
 
 @router.get("/matches/results", response_model=list[MatchListRead])
 def get_result_matches(db: Session = Depends(get_db)) -> list[MatchListRead]:
     matches = queries.list_matches_by_statuses(db, {"finished", "FT", "AET", "PEN"}, limit=100)
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in matches]
 
 
 @router.get("/matches/range", response_model=list[MatchListRead])
@@ -140,7 +151,9 @@ def get_matches_range(
         raise HTTPException(status_code=400, detail="date_to debe ser mayor o igual que date_from")
     matches = queries.list_matches_range(db, date_from, date_to, limit=limit, offset=offset)
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in matches]
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in matches]
 
 
 @router.get("/calendar/month", response_model=list[CalendarDayRead])
@@ -184,7 +197,12 @@ def get_match(match_id: int, db: Session = Depends(get_db)) -> MatchDetailRead:
     match = queries.get_match(db, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Partido no encontrado")
-    row = _match_list_read(match, len([prediction for prediction in match.predictions if prediction.status == "published"]))
+    row = _match_list_read(
+        match,
+        len([prediction for prediction in match.predictions if prediction.predicted_probability is not None]),
+        len([prediction for prediction in match.predictions if prediction.status in {"published", "ready_to_publish", "publishable"}]),
+        _match_availability_flags(db, match.id),
+    )
     return MatchDetailRead(
         **row.model_dump(),
         home_form=queries.latest_team_form(db, match.home_team_id, match.competition_id),
@@ -354,8 +372,12 @@ def get_competition(competition_id: int, db: Session = Depends(get_db)) -> Compe
     if not competition:
         raise HTTPException(status_code=404, detail="Competicion no encontrada")
     pick_counts = queries.pick_counts_by_match(db)
-    upcoming = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_competition_matches(db, competition_id, before=False, limit=8)]
-    recent = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_competition_matches(db, competition_id, before=True, limit=8)]
+    upcoming_matches = queries.list_competition_matches(db, competition_id, before=False, limit=8)
+    recent_matches = queries.list_competition_matches(db, competition_id, before=True, limit=8)
+    availability = queries.data_availability_by_match(db, [match.id for match in upcoming_matches + recent_matches])
+    publishable_counts = queries.publishable_counts_by_match(db)
+    upcoming = [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in upcoming_matches]
+    recent = [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in recent_matches]
     return CompetitionDetailRead(
         **CompetitionRead.model_validate(competition).model_dump(),
         match_count=len(queries.list_competition_matches(db, competition_id, limit=500)),
@@ -372,7 +394,10 @@ def get_competition_matches(competition_id: int, db: Session = Depends(get_db)) 
     if not queries.get_competition(db, competition_id):
         raise HTTPException(status_code=404, detail="Competicion no encontrada")
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_competition_matches(db, competition_id, limit=100)]
+    matches = queries.list_competition_matches(db, competition_id, limit=100)
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in matches]
 
 
 @router.get("/competitions/{competition_id}/standings", response_model=list[StandingRowRead])
@@ -438,8 +463,12 @@ def get_team_detail(team_id: int, db: Session = Depends(get_db)) -> TeamDetailRe
     if not team:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
     pick_counts = queries.pick_counts_by_match(db)
-    recent = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_team_matches(db, team_id, before=True)]
-    upcoming = [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_team_matches(db, team_id, before=False)]
+    recent_matches = queries.list_team_matches(db, team_id, before=True)
+    upcoming_matches = queries.list_team_matches(db, team_id, before=False)
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in recent_matches + upcoming_matches])
+    recent = [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in recent_matches]
+    upcoming = [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in upcoming_matches]
     form = queries.latest_any_team_form(db, team_id)
     statistics = {
         "muestra": form.matches_sample if form else None,
@@ -464,7 +493,10 @@ def get_team_matches(team_id: int, db: Session = Depends(get_db)) -> list[MatchL
     if not queries.get_team(db, team_id):
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
     pick_counts = queries.pick_counts_by_match(db)
-    return [_match_list_read(match, pick_counts.get(match.id, 0)) for match in queries.list_team_matches(db, team_id, limit=100)]
+    matches = queries.list_team_matches(db, team_id, limit=100)
+    publishable_counts = queries.publishable_counts_by_match(db)
+    availability = queries.data_availability_by_match(db, [match.id for match in matches])
+    return [_match_list_read(match, pick_counts.get(match.id, 0), publishable_counts.get(match.id, 0), availability.get(match.id)) for match in matches]
 
 
 @router.get("/teams/{team_id}/statistics", response_model=GenericInfoRead)
@@ -795,11 +827,19 @@ def admin_clear_data(db: Session = Depends(get_db)):
     return {"status": "cleared"}
 
 
-def _match_list_read(match, pick_count: int) -> MatchListRead:
+def _match_list_read(match, pick_count: int, publishable_pick_count: int = 0, availability: dict[str, bool] | None = None) -> MatchListRead:
     published = [prediction for prediction in match.predictions if prediction.status == "published"]
     candidates = [prediction for prediction in match.predictions if prediction.predicted_probability is not None]
     candidates.sort(key=lambda prediction: (prediction.expected_value or -999, prediction.confidence or 0), reverse=True)
     best = published[0] if published else (candidates[0] if candidates else None)
+    availability = availability or {}
+    data_flags = [
+        bool(availability.get("statistics")),
+        bool(availability.get("lineups")),
+        bool(availability.get("odds")),
+        bool(candidates),
+    ]
+    data_quality_score = round(sum(1 for flag in data_flags if flag) / len(data_flags) * 100, 1)
     return MatchListRead(
         id=match.id,
         external_id=match.external_id,
@@ -814,10 +854,35 @@ def _match_list_read(match, pick_count: int) -> MatchListRead:
         home_team=TeamRead.model_validate(match.home_team),
         away_team=TeamRead.model_validate(match.away_team),
         pick_count=pick_count,
+        publishable_pick_count=publishable_pick_count,
         main_probability=best.predicted_probability if best else None,
         best_odds=best.available_odds if best else None,
         confidence=best.confidence if best else None,
+        best_market=_prediction_label(best) if best else None,
+        merlin_score=_prediction_merlin_score(best) if best else None,
+        data_quality_score=data_quality_score,
+        has_statistics=bool(availability.get("statistics")),
+        has_lineups=bool(availability.get("lineups")),
+        has_odds=bool(availability.get("odds")),
+        has_prediction=bool(candidates),
+        has_pick=publishable_pick_count > 0,
     )
+
+
+def _match_availability_flags(db: Session, match_id: int) -> dict[str, bool]:
+    return queries.data_availability_by_match(db, [match_id]).get(match_id, {})
+
+
+def _prediction_label(prediction) -> str:
+    line = f" {prediction.line:g}" if prediction.line is not None else ""
+    return f"{prediction.market} {prediction.selection}{line}".strip()
+
+
+def _prediction_merlin_score(prediction) -> float:
+    probability = prediction.predicted_probability or 0
+    confidence = prediction.confidence or 0
+    value = max(prediction.expected_value or 0, 0)
+    return round(min(100, probability * 45 + confidence * 35 + value * 200), 1)
 
 
 def _match_availability(db: Session, match_id: int) -> dict[str, str]:

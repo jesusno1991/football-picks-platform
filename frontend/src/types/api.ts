@@ -103,9 +103,18 @@ export type Match = {
   home_team: Team
   away_team: Team
   pick_count: number
+  publishable_pick_count: number
   main_probability?: number | null
   best_odds?: number | null
   confidence?: number | null
+  best_market?: string | null
+  merlin_score?: number | null
+  data_quality_score?: number | null
+  has_statistics: boolean
+  has_lineups: boolean
+  has_odds: boolean
+  has_prediction: boolean
+  has_pick: boolean
   predictions?: Prediction[]
   home_form?: Record<string, number | string | null>
   away_form?: Record<string, number | string | null>
