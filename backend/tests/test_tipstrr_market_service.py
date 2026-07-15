@@ -57,6 +57,31 @@ def test_tipstrr_market_picks_find_publicable_real_odds(db):
     assert all(not (row.family == "total_goals" and row.team_scope == "all" and row.selection == "over" and row.line in {1.5, 2.5}) for row in rows)
 
 
+def test_tipstrr_decision_filter_accepts_ready_to_publish_alias(db):
+    match = _create_match_with_forms(db)
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Bet365",
+            market="goals",
+            market_family="total_goals",
+            period="full_time",
+            team_scope="all",
+            selection="over",
+            line=3.0,
+            odds=4.5,
+            provider="test",
+            validation_status="mapped",
+        )
+    )
+    db.commit()
+
+    rows = list_tipstrr_market_picks(db, match.kickoff_at.date(), "ready_to_publish")
+
+    assert rows
+    assert all(row.decision == "PUBLICABLE" for row in rows)
+
+
 def test_tipstrr_generator_creates_prediction_rows_for_new_markets(db):
     match = _create_match_with_forms(db)
     upsert_prediction_systems(db)

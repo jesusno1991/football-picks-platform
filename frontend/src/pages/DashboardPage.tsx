@@ -13,7 +13,7 @@ export function DashboardPage() {
   const tomorrow = formatDateInput(tomorrowDate)
   const { data: todayMatches = [] } = useMatches(today)
   const { data: tomorrowMatches = [] } = useMatches(tomorrow)
-  const { data: picks = [] } = useTipstrrMarketPicks(today, 'ready_to_publish')
+  const { data: picks = [] } = useTipstrrMarketPicks(today, 'PUBLICABLE')
   const { data: overview } = useOverview()
   const [selectedId, setSelectedId] = useState<number | undefined>()
   const [q, setQ] = useState('')

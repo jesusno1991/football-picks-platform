@@ -54,7 +54,7 @@ def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | Non
     for match in matches:
         rows.extend(_rows_for_match(db, match))
     if decision:
-        decision_normalized = decision.upper()
+        decision_normalized = _normalize_decision_filter(decision)
         rows = [row for row in rows if row.decision == decision_normalized]
     return sorted(
         rows,
@@ -65,6 +65,16 @@ def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | Non
             row.kickoff_at,
         ),
     )
+
+
+def _normalize_decision_filter(decision: str) -> str:
+    normalized = decision.strip().upper()
+    return {
+        "READY_TO_PUBLISH": "PUBLICABLE",
+        "PUBLISH": "PUBLICABLE",
+        "PUBLISHED": "PUBLICABLE",
+        "PARA_PUBLICAR": "PUBLICABLE",
+    }.get(normalized, normalized)
 
 
 def _rows_for_match(db: Session, match: Match) -> list[TipstrrMarketPick]:

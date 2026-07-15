@@ -1,11 +1,27 @@
 import { useState } from 'react'
 import { PredictionTable } from '../components/PredictionTable'
-import { usePredictions } from '../hooks/queries'
-import { formatDateInput } from '../utils/format'
+import { usePredictions, useTipstrrMarketPicks } from '../hooks/queries'
+import type { TipstrrMarketPick } from '../types/api'
+import { formatDateInput, formatDecimal, formatPercent } from '../utils/format'
+
+function dateFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const value = params.get('date')
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : formatDateInput(new Date())
+}
 
 export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boolean }) {
-  const [date, setDate] = useState(formatDateInput(new Date()))
-  const { data = [], isLoading } = usePredictions(onlyPublishable ? 'published' : undefined, date)
+  const [date, setDateState] = useState(dateFromUrl)
+  const { data: predictions = [], isLoading: predictionsLoading } = usePredictions(onlyPublishable ? undefined : undefined, date)
+  const { data: publicablePicks = [], isLoading: picksLoading } = useTipstrrMarketPicks(date, 'PUBLICABLE')
+  const { data: allMarketRows = [] } = useTipstrrMarketPicks(date)
+  const isLoading = onlyPublishable ? picksLoading : predictionsLoading
+  const data = onlyPublishable ? publicablePicks : predictions
+
+  const setDate = (nextDate: string) => {
+    setDateState(nextDate)
+    window.history.pushState({}, '', `${onlyPublishable ? '/picks' : '/predictions'}?date=${nextDate}`)
+  }
 
   const shiftDate = (days: number) => {
     const next = new Date(`${date}T12:00:00`)
@@ -34,9 +50,54 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
       {isLoading ? <div className="card p-4 font-bold text-slate-600">Cargando datos reales de la fecha...</div> : null}
       {!isLoading && data.length === 0 ? (
         <div className="card p-5 text-sm font-semibold text-slate-600">
-          {onlyPublishable ? 'No hay picks marcados para publicar en esta fecha.' : 'No hay predicciones generadas para esta fecha.'}
+          {onlyPublishable
+            ? `No hay picks publicables en esta fecha. Candidatos analizados: ${allMarketRows.length}.`
+            : 'No hay predicciones generadas para esta fecha.'}
         </div>
-      ) : <PredictionTable predictions={data} />}
+      ) : onlyPublishable ? <MarketPickTable picks={publicablePicks} /> : <PredictionTable predictions={predictions} />}
+    </div>
+  )
+}
+
+function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
+  return (
+    <div className="card overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-3 py-3">Partido</th>
+            <th className="px-3 py-3">Mercado</th>
+            <th className="px-3 py-3">Prob.</th>
+            <th className="px-3 py-3">Cuota justa</th>
+            <th className="px-3 py-3">Cuota</th>
+            <th className="px-3 py-3">EV</th>
+            <th className="px-3 py-3">Merlin</th>
+            <th className="px-3 py-3">Riesgo</th>
+            <th className="px-3 py-3">Motivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {picks.map((pick, index) => (
+            <tr key={`${pick.match_id}-${pick.family}-${pick.period}-${pick.team_scope}-${pick.selection}-${pick.line ?? 'nl'}-${index}`} className="border-t border-slate-100">
+              <td className="px-3 py-3">
+                <div className="font-black">{pick.match_name}</div>
+                <div className="text-xs font-semibold text-slate-500">{pick.country} · {pick.competition_name}</div>
+              </td>
+              <td className="px-3 py-3">
+                <div className="font-black">{pick.label}</div>
+                <div className="text-xs font-semibold text-slate-500">{pick.period} · {pick.team_scope}</div>
+              </td>
+              <td className="px-3 py-3">{formatPercent(pick.model_probability)}</td>
+              <td className="px-3 py-3">{formatDecimal(pick.fair_odds, 2)}</td>
+              <td className="px-3 py-3 font-black">{formatDecimal(pick.market_odds, 2)}</td>
+              <td className="px-3 py-3 font-black text-emerald-700">{formatDecimal(pick.expected_value, 3)}</td>
+              <td className="px-3 py-3 font-black">{formatDecimal(pick.merlin_score, 1)}</td>
+              <td className="px-3 py-3">{pick.risk_level}</td>
+              <td className="px-3 py-3">{pick.reason}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
