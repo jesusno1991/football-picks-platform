@@ -380,6 +380,34 @@ def test_tipstrr_ignores_outlier_odd_when_no_professional_price_exists(db):
     assert "Falta cuota real del proveedor" in row.failed_rules
 
 
+def test_protected_positive_handicap_is_watch_without_visible_ev(db):
+    match = _create_match_with_forms(db)
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Bet365",
+            market="handicap",
+            market_family="asian_handicap",
+            period="full_time",
+            team_scope="away",
+            selection="handicap",
+            line=2.0,
+            odds=3.2,
+            provider="test",
+            validation_status="mapped",
+        )
+    )
+    db.commit()
+
+    rows = list_tipstrr_market_picks(db, match.kickoff_at.date())
+    row = next(item for item in rows if item.family == "asian_handicap" and item.team_scope == "away" and item.line == 2.0)
+
+    assert row.decision == "WATCH"
+    assert row.expected_value is None
+    assert row.publish_blocked_by_config is True
+    assert "Handicap protegido requiere validacion manual de linea" in row.failed_rules
+
+
 def test_started_match_does_not_show_ev_or_rank_above_future_watch(db):
     now = utc_now_naive()
     started = _create_match_with_forms_at(db, now - timedelta(minutes=30), "match-started-ranking")

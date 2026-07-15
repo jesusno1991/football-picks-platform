@@ -279,6 +279,10 @@ def _decision_for_market(
         audit["publish_blocked_by_odds"] = True
         return "WATCH", "Cuota fuera de rango profesional", audit
     _pass(audit, "Cuota dentro de rango profesional")
+    if _looks_like_inverted_or_protected_handicap(spec, model_probability, odd.odds):
+        _fail(audit, "Handicap protegido requiere validacion manual de linea")
+        audit["publish_blocked_by_config"] = True
+        return "WATCH", "Handicap protegido en modo estudio para evitar picks repetitivos o mapeo inverso", audit
     if spec.family in {"correct_score", "first_goal", "qualification"}:
         _fail(audit, "Mercado reservado para estudio por alta varianza")
         audit["publish_blocked_by_config"] = True
@@ -379,6 +383,19 @@ def _display_expected_value(match: Match, audit: dict, raw_expected_value: float
 
 def _odds_in_professional_range(odds: float | None) -> bool:
     return odds is not None and 1.25 <= float(odds) <= 8.0
+
+
+def _looks_like_inverted_or_protected_handicap(spec: MarketSpec, model_probability: float | None, odds: float | None) -> bool:
+    if spec.family != "asian_handicap" or spec.line is None:
+        return False
+    line = float(spec.line)
+    probability = model_probability or 0.0
+    market_odds = float(odds or 0.0)
+    if line > 1.25:
+        return True
+    if spec.period == "first_half" and line > 0.75:
+        return True
+    return probability >= 0.90 and market_odds >= 2.50
 
 
 def _legacy_family(market: str) -> str:

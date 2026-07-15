@@ -205,11 +205,12 @@ function ExportMetric({ label, value }: { label: string; value: string | number 
 }
 
 function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
-  const [sortKey, setSortKey] = useState<'probability' | 'ev' | 'merlin' | 'odds'>('probability')
+  const [sortKey, setSortKey] = useState<'opportunity' | 'probability' | 'ev' | 'merlin' | 'odds'>('opportunity')
   const [marketFilter, setMarketFilter] = useState('Todos')
   const [riskFilter, setRiskFilter] = useState('Todos')
   const [minProbability, setMinProbability] = useState('')
   const [minEv, setMinEv] = useState('')
+  const [bestPerMatch, setBestPerMatch] = useState(true)
   const marketGroups = ['Todos', ...Array.from(new Set(picks.map((pick) => pick.group))).sort()]
   const filteredPicks = picks.filter((pick) => {
     const probabilityOk = !minProbability || value(pick.model_probability) >= Number(minProbability) / 100
@@ -218,7 +219,9 @@ function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
     const riskOk = riskFilter === 'Todos' || pick.risk_level === riskFilter
     return probabilityOk && evOk && marketOk && riskOk
   })
-  const sortedPicks = [...filteredPicks].sort((left, right) => {
+  const visiblePicks = bestPerMatch ? bestCandidatePerMatch(filteredPicks) : filteredPicks
+  const sortedPicks = [...visiblePicks].sort((left, right) => {
+    if (sortKey === 'opportunity') return opportunityScore(right) - opportunityScore(left)
     if (sortKey === 'probability') return value(right.model_probability) - value(left.model_probability)
     if (sortKey === 'ev') return value(right.expected_value) - value(left.expected_value)
     if (sortKey === 'merlin') return value(right.merlin_score) - value(left.merlin_score)
@@ -230,10 +233,17 @@ function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
       <div className="space-y-3 border-b border-line bg-white p-3 text-xs font-black">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-slate-500">Ordenar por:</span>
+          <SortButton active={sortKey === 'opportunity'} onClick={() => setSortKey('opportunity')} label="Mejor oportunidad" />
           <SortButton active={sortKey === 'probability'} onClick={() => setSortKey('probability')} label="Mayor probabilidad" />
           <SortButton active={sortKey === 'ev'} onClick={() => setSortKey('ev')} label="Mejor EV" />
           <SortButton active={sortKey === 'merlin'} onClick={() => setSortKey('merlin')} label="Merlin Score" />
           <SortButton active={sortKey === 'odds'} onClick={() => setSortKey('odds')} label="Mayor cuota" />
+          <button
+            onClick={() => setBestPerMatch((current) => !current)}
+            className={`rounded-full px-3 py-1.5 ${bestPerMatch ? 'bg-slate-900 text-white' : 'border border-line bg-white text-slate-700'}`}
+          >
+            {bestPerMatch ? '1 mercado por partido' : 'Ver todos los mercados'}
+          </button>
           <span className="ml-auto text-slate-500">{sortedPicks.length} visibles de {picks.length}</span>
         </div>
         <div className="grid gap-2 md:grid-cols-4">
@@ -300,6 +310,39 @@ function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
 
 function SortButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return <button onClick={onClick} className={`rounded-full px-3 py-1.5 ${active ? 'bg-cyan-500 text-white' : 'border border-line bg-white text-slate-700'}`}>{label}</button>
+}
+
+function bestCandidatePerMatch(picks: TipstrrMarketPick[]) {
+  const byMatch = new Map<number, TipstrrMarketPick>()
+  picks.forEach((pick) => {
+    const current = byMatch.get(pick.match_id)
+    if (!current || opportunityScore(pick) > opportunityScore(current)) {
+      byMatch.set(pick.match_id, pick)
+    }
+  })
+  return Array.from(byMatch.values())
+}
+
+function opportunityScore(pick: TipstrrMarketPick) {
+  const decisionBoost = pick.decision === 'PUBLICABLE' ? 100 : pick.expected_value != null ? 35 : 0
+  const riskPenalty = pick.risk_level === 'high' ? 25 : pick.risk_level === 'medium' ? 8 : 0
+  const marketPenalty = protectedHandicapPenalty(pick)
+  return (
+    decisionBoost
+    + value(pick.merlin_score)
+    + Math.max(0, value(pick.expected_value)) * 22
+    + Math.max(0, value(pick.model_probability)) * 8
+    + Math.max(0, value(pick.odds_quality_score)) * 0.08
+    - riskPenalty
+    - marketPenalty
+  )
+}
+
+function protectedHandicapPenalty(pick: TipstrrMarketPick) {
+  if (pick.family !== 'asian_handicap' || pick.line == null) return 0
+  if (pick.line > 1.25) return 45
+  if (pick.period === 'first_half' && pick.line > 0.75) return 45
+  return 12
 }
 
 function value(input?: number | null) {
