@@ -22,8 +22,6 @@ python -m venv .venv
 pip install -r requirements.txt
 copy ..\.env.example .env
 alembic upgrade head
-python scripts.py load-mock
-python scripts.py generate-predictions
 uvicorn app.main:app --reload
 ```
 
@@ -42,13 +40,27 @@ cd football-picks-platform
 docker compose up --build
 ```
 
+Para pruebas locales sin APIs reales puedes usar `DATA_PROVIDER=mock`, cargar datos desde el panel de administración y recalcular predicciones. En producción no debe usarse mock.
+
 ## Endpoints
 
-- `GET /api/matches`
+- `GET /api/health`
+- `GET /api/readiness`
+- `GET /api/model-health`
+- `GET /api/matches?date=YYYY-MM-DD`
+- `GET /api/matches/range?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
+- `GET /api/calendar/month?year=YYYY&month=MM`
 - `GET /api/matches/{id}`
+- `GET /api/matches/{id}/statistics`
+- `GET /api/matches/{id}/events`
+- `GET /api/matches/{id}/lineups`
+- `GET /api/matches/{id}/odds`
+- `GET /api/matches/{id}/markets`
 - `GET /api/competitions`
 - `GET /api/teams/{id}`
+- `GET /api/search?q=`
 - `GET /api/predictions`
+- `GET /api/predictions/export?date=YYYY-MM-DD`
 - `GET /api/predictions/{id}`
 - `GET /api/statistics/overview`
 - `GET /api/statistics/systems`
@@ -59,6 +71,12 @@ docker compose up --build
 - `POST /api/admin/generate-predictions`
 - `POST /api/admin/verify-results`
 - `POST /api/admin/recalculate-statistics`
+- `POST /api/admin/import-range`
+- `POST /api/admin/sync-day`
+- `POST /api/admin/sync-day-deep`
+- `POST /api/admin/sync-match-deep`
+- `POST /api/admin/rank-markets`
+- `POST /api/admin/run-maintenance`
 
 Los endpoints admin requieren cabecera:
 
@@ -70,32 +88,48 @@ X-Admin-Token: <SECRET_KEY>
 
 - Solo picks prepartido.
 - No se publican picks si faltan menos de 15 minutos para el inicio.
-- Se exige muestra minima de 10 partidos combinados.
-- La cuota disponible debe superar la cuota justa.
-- EV positivo y por encima del minimo del sistema.
-- Sistemas activos principales: `GOALS_OVER15_V1`, `GOALS_OVER25_V1`, `GOALS_OVER35_V1` y `BTTS_V1`.
-- Sistema secundario activo: `CORNERS_OVER_95`.
-- Si no hay ventaja estadistica clara, el sistema guarda `NO BET` y no fuerza picks.
+- Las predicciones se calculan por mercado, no solo por partido.
+- La cuota debe estar mapeada, validada y ser reciente.
+- No se usa una cuota antigua o no verificada para marcar picks publicables.
+- Si no hay ventaja estadistica clara, el sistema guarda el candidato como no publicable y no fuerza picks.
+- La exportacion diaria excluye partidos de otra fecha local, iniciados, finalizados, cancelados o suspendidos.
 
 ## Railway
 
-Crear servicios separados:
+El despliegue principal usa el `Dockerfile` de la raiz. Ese Dockerfile compila el frontend y lo copia al backend FastAPI para servir una sola aplicacion desde Railway.
+
+Crear:
 
 1. PostgreSQL.
-2. Backend desde `backend/Dockerfile`.
-3. Frontend desde `frontend/Dockerfile`.
+2. Servicio web desde el repositorio raiz.
 
 Variables minimas:
 
 ```text
 DATABASE_URL=
 SECRET_KEY=
-DATA_PROVIDER=mock
+DATA_PROVIDER=api_football
+API_FOOTBALL_KEY=
+RAPIDAPI_KEY=
+FLASHSCORE_RAPIDAPI_HOST=flashscore4.p.rapidapi.com
 FRONTEND_URL=
 BACKEND_URL=
-VITE_API_URL=
 ```
 
-## Notas
+Variables recomendadas:
 
-El proveedor actual es mock y esta desacoplado mediante `FootballDataProvider`. La integracion real se anade creando una clase nueva que implemente esa interfaz.
+```text
+ENVIRONMENT=production
+RATE_LIMIT_REQUESTS_PER_MINUTE=240
+EXPORT_MAX_ODDS_AGE_HOURS=24
+APP_TIMEZONE=Europe/Madrid
+```
+
+## Checks antes de publicar
+
+- `pytest backend/tests`
+- `python -m compileall backend/app`
+- `pnpm --dir frontend run build`
+- `GET /api/health`
+- `GET /api/readiness`
+- Verificar en `/model-health` que no aparece proveedor mock, faltan cuotas recientes o errores de sincronizacion.
