@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team
 from app.core.config import get_settings
+from app.main import _rate_buckets
 from app.repositories.queries import latest_odds
 from app.services.collection_service import collect_mock_data
 from app.services.prediction_service import generate_predictions
@@ -12,6 +13,47 @@ def test_health(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_api_responses_include_security_headers(client):
+    response = client.get("/api/health")
+
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "camera=()" in response.headers["Permissions-Policy"]
+
+
+def test_rate_limit_uses_current_settings(client, monkeypatch):
+    _rate_buckets.clear()
+    monkeypatch.setenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "1")
+    get_settings.cache_clear()
+
+    first = client.get("/api/health")
+    second = client.get("/api/health")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()["detail"] == "rate_limit_exceeded"
+    assert second.headers["Retry-After"] == "60"
+
+    _rate_buckets.clear()
+    monkeypatch.delenv("RATE_LIMIT_REQUESTS_PER_MINUTE", raising=False)
+    get_settings.cache_clear()
+
+
+def test_hsts_only_enabled_in_production(client, monkeypatch):
+    _rate_buckets.clear()
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    get_settings.cache_clear()
+
+    response = client.get("/api/health")
+
+    assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+
+    _rate_buckets.clear()
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    get_settings.cache_clear()
 
 
 def test_admin_requires_token(client):
