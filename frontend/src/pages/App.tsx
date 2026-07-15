@@ -8,6 +8,7 @@ const CalendarPage = lazy(() => import('./CalendarPage').then((module) => ({ def
 const CompetitionsPage = lazy(() => import('./CompetitionsPage').then((module) => ({ default: module.CompetitionsPage })))
 const DashboardPage = lazy(() => import('./DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const HomePage = lazy(() => import('./HomePage').then((module) => ({ default: module.HomePage })))
+const LivePicksPage = lazy(() => import('./LivePicksPage').then((module) => ({ default: module.LivePicksPage })))
 const MatchDetailPage = lazy(() => import('./MatchDetailPage').then((module) => ({ default: module.MatchDetailPage })))
 const ModelHealthPage = lazy(() => import('./ModelHealthPage').then((module) => ({ default: module.ModelHealthPage })))
 const PicksPage = lazy(() => import('./PicksPage').then((module) => ({ default: module.PicksPage })))
@@ -27,6 +28,7 @@ type Page =
   | 'clasificaciones'
   | 'mercados'
   | 'picks'
+  | 'picks_live'
   | 'predicciones'
   | 'estadisticas'
   | 'archivo'
@@ -43,6 +45,7 @@ function pageFromPath(pathname: string): { page: Page; matchId?: number } {
   if (pathname.startsWith('/players')) return { page: 'jugadores' }
   if (pathname.startsWith('/standings')) return { page: 'clasificaciones' }
   if (pathname.startsWith('/markets')) return { page: 'mercados' }
+  if (pathname.startsWith('/live-picks')) return { page: 'picks_live' }
   if (pathname.startsWith('/picks')) return { page: 'picks' }
   if (pathname.startsWith('/predictions')) return { page: 'predicciones' }
   if (pathname.startsWith('/statistics')) return { page: 'estadisticas' }
@@ -62,6 +65,7 @@ const pagePaths: Record<Page, string> = {
   clasificaciones: '/standings',
   mercados: '/markets',
   picks: '/picks',
+  picks_live: '/live-picks',
   predicciones: '/predictions',
   estadisticas: '/statistics',
   archivo: '/archive',
@@ -79,6 +83,7 @@ const nav: { page: Page; label: string; icon: React.ReactNode }[] = [
   { page: 'clasificaciones', label: 'Clasificaciones', icon: <Table2 size={17} /> },
   { page: 'mercados', label: 'Mercados', icon: <ListChecks size={17} /> },
   { page: 'picks', label: 'Picks', icon: <Star size={17} /> },
+  { page: 'picks_live', label: 'Picks Live', icon: <Activity size={17} /> },
   { page: 'predicciones', label: 'Predicciones', icon: <ListChecks size={17} /> },
   { page: 'estadisticas', label: 'Estadísticas', icon: <BarChart3 size={17} /> },
   { page: 'archivo', label: 'Archivo', icon: <FileClock size={17} /> },
@@ -126,6 +131,7 @@ export function App() {
         {page === 'clasificaciones' ? <StandingsPage /> : null}
         {page === 'mercados' ? <TipstrrMarketsPage /> : null}
         {page === 'picks' ? <PicksPage onlyPublishable /> : null}
+        {page === 'picks_live' ? <LivePicksPage /> : null}
         {page === 'predicciones' ? <PicksPage /> : null}
         {page === 'estadisticas' ? <StatsPage /> : null}
         {page === 'archivo' ? <ArchivePage /> : null}

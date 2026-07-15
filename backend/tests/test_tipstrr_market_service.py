@@ -191,6 +191,20 @@ def test_tipstrr_endpoint_supports_limit(client):
     assert len(data) == 5
 
 
+def test_live_picks_endpoint_returns_live_value(client, db):
+    match = _create_match_with_forms_at(db, utc_now_naive() - timedelta(minutes=35), "match-live")
+    match.status = "1H"
+    _add_publicable_odd(db, match, utc_now_naive() - timedelta(minutes=5))
+    db.commit()
+
+    data = client.get("/api/live-picks", params={"limit": 20}).json()
+
+    assert any(row["external_id"] == "match-live" for row in data)
+    target = next(row for row in data if row["external_id"] == "match-live" and row["family"] == "total_goals")
+    assert target["decision"] == "LIVE_VALUE"
+    assert target["reason"] == "Live: valor positivo con cuota real"
+
+
 def test_market_optimizer_keeps_only_best_ev_per_match(db):
     match = _create_match_with_forms(db)
     system = PredictionSystem(

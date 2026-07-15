@@ -1,4 +1,5 @@
 import calendar
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -409,6 +410,28 @@ def get_tipstrr_market_picks(
     _ensure_date_loaded(db, target_date)
     rows = list_tipstrr_market_picks(db, target_date, decision)
     return rows[offset : offset + limit]
+
+
+@router.get("/live-picks", response_model=list[TipstrrMarketPickRead])
+def get_live_picks(
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> list[TipstrrMarketPickRead]:
+    _ensure_date_loaded(db, date.today())
+    live_statuses = {"live", "1h", "2h", "ht", "et", "p", "in_play", "first_half", "second_half", "halftime"}
+    rows = [
+        _live_pick_row(row)
+        for row in list_tipstrr_market_picks(db, date.today(), None)
+        if row.match_status.strip().lower() in live_statuses
+    ]
+    rows.sort(
+        key=lambda row: (
+            0 if row.decision == "LIVE_VALUE" else 1 if row.decision == "WATCH" else 2,
+            -(row.expected_value if row.expected_value is not None else -999),
+            -row.merlin_score,
+        )
+    )
+    return rows[:limit]
 
 
 @router.get("/market-rankings", response_model=list[MarketRankingRead])
@@ -1110,6 +1133,41 @@ def _count_matches_with_prematch_data(db: Session, match_ids: list[int] | None =
 def _prediction_label(prediction) -> str:
     line = f" {prediction.line:g}" if prediction.line is not None else ""
     return f"{prediction.market} {prediction.selection}{line}".strip()
+
+
+def _live_pick_row(row):
+    if row.market_odds is None:
+        return replace(row, decision="SIN_CUOTA", reason="Live: falta cuota real")
+    if not _live_line_is_professional(row):
+        return replace(row, decision="WATCH", reason="Live: linea fuera de rango profesional")
+    if row.publish_blocked_by_odds or (row.price_age_minutes is not None and row.price_age_minutes > 120):
+        return replace(row, decision="WATCH", reason="Live: cuota no verificada o desactualizada")
+    if row.risk_level == "high":
+        return replace(row, decision="WATCH", reason="Live: riesgo alto")
+    if row.data_quality < 40:
+        return replace(row, decision="WATCH", reason="Live: datos insuficientes")
+    if row.model_probability is None or row.model_probability < 0.35:
+        return replace(row, decision="WATCH", reason="Live: probabilidad insuficiente")
+    if row.expected_value is None or row.expected_value < 0.03:
+        return replace(row, decision="WATCH", reason="Live: sin valor suficiente")
+    return replace(row, decision="LIVE_VALUE", reason="Live: valor positivo con cuota real")
+
+
+def _live_line_is_professional(row) -> bool:
+    if row.line is None:
+        return True
+    line = abs(float(row.line))
+    if row.family == "total_goals":
+        if row.period == "first_half" and row.team_scope == "all":
+            return 0.5 <= line <= 2.5
+        if row.period == "first_half" and row.team_scope in {"home", "away"}:
+            return 0.5 <= line <= 1.5
+        if row.team_scope in {"home", "away"}:
+            return 0.5 <= line <= 3.5
+        return 0.5 <= line <= 4.5
+    if row.family == "asian_handicap":
+        return line <= (1.5 if row.period == "first_half" else 3.0)
+    return True
 
 
 def _prediction_merlin_score(prediction) -> float:

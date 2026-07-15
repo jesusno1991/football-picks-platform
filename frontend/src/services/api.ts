@@ -77,6 +77,11 @@ export async function fetchTipstrrMarketPicks(date?: string, decision?: string, 
   return response.data
 }
 
+export async function fetchLivePicks(limit = 500) {
+  const response = await api.get<TipstrrMarketPick[]>('/api/live-picks', { params: { limit } })
+  return response.data
+}
+
 export async function fetchMarketRankings() {
   const response = await api.get<MarketRanking[]>('/api/market-rankings')
   return response.data
