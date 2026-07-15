@@ -267,9 +267,17 @@ def search_all(db: Session, q: str, limit: int = 8) -> list[dict]:
 
 
 def latest_odds(db: Session, match_id: int, market: str, selection: str, line: float | None) -> Odds | None:
+    min_collected_at = datetime.utcnow() - timedelta(hours=get_settings().export_max_odds_age_hours)
     stmt = (
         select(Odds)
-        .where(Odds.match_id == match_id, Odds.market == market, Odds.selection == selection)
+        .where(
+            Odds.match_id == match_id,
+            Odds.market == market,
+            Odds.selection == selection,
+            Odds.odds > 1,
+            Odds.validation_status.in_(["mapped", "verified", "valid"]),
+            Odds.collected_at >= min_collected_at,
+        )
         .order_by(Odds.collected_at.desc())
         .limit(1)
     )

@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team
 from app.core.config import get_settings
+from app.repositories.queries import latest_odds
 from app.services.collection_service import collect_mock_data
 from app.services.prediction_service import generate_predictions
 
@@ -148,6 +149,52 @@ def test_match_list_marks_only_recent_valid_odds_as_available(client, db):
     target = next(row for row in rows if row["external_id"] == "stale-odds-match")
 
     assert target["has_odds"] is False
+
+
+def test_latest_odds_ignores_stale_or_unverified_prices(db):
+    competition, home, away = _seed_calendar_entities(db)
+    match = Match(
+        external_id="latest-odds-stale",
+        competition_id=competition.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_at=datetime.utcnow() + timedelta(days=1),
+        status="scheduled",
+        venue=None,
+        round=None,
+        season="2026",
+    )
+    db.add(match)
+    db.flush()
+    db.add_all(
+        [
+            Odds(
+                match_id=match.id,
+                bookmaker="OldBook",
+                market="goals",
+                selection="over",
+                line=3.0,
+                odds=9.0,
+                provider="test",
+                validation_status="mapped",
+                collected_at=datetime.utcnow() - timedelta(hours=30),
+            ),
+            Odds(
+                match_id=match.id,
+                bookmaker="BadBook",
+                market="goals",
+                selection="over",
+                line=3.0,
+                odds=2.2,
+                provider="test",
+                validation_status="unverified",
+                collected_at=datetime.utcnow(),
+            ),
+        ]
+    )
+    db.commit()
+
+    assert latest_odds(db, match.id, "goals", "over", 3.0) is None
 
 
 def test_calendar_month_counts_publishable_picks(client, db):
