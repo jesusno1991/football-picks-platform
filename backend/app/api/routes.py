@@ -968,7 +968,9 @@ def admin_run_maintenance(
 
 
 @router.post("/admin/clear-data", dependencies=[Depends(require_admin)])
-def admin_clear_data(db: Session = Depends(get_db)):
+def admin_clear_data(confirm: str = Query(default=""), db: Session = Depends(get_db)):
+    if confirm != "CONFIRM_CLEAR_ALL_DATA":
+        raise HTTPException(status_code=400, detail="Confirmacion requerida para borrar datos")
     for model in (SystemPerformance, Prediction, Odds, TeamMatchStatistics, TeamForm, Match, Team, Competition):
         db.execute(delete(model))
     db.commit()

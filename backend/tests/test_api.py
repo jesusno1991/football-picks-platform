@@ -402,6 +402,21 @@ def test_deep_sync_day_persists_match_odds(client):
     assert odds
 
 
+def test_clear_data_requires_explicit_confirmation(client):
+    client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
+
+    blocked = client.post("/api/admin/clear-data", headers={"X-Admin-Token": "test-secret"})
+    confirmed = client.post(
+        "/api/admin/clear-data",
+        params={"confirm": "CONFIRM_CLEAR_ALL_DATA"},
+        headers={"X-Admin-Token": "test-secret"},
+    )
+
+    assert blocked.status_code == 400
+    assert confirmed.status_code == 200
+    assert confirmed.json()["status"] == "cleared"
+
+
 def test_prediction_export_reports_refresh_error_instead_of_crashing(client, monkeypatch):
     def broken_refresh(db, match_date):
         raise RuntimeError("provider unavailable")
