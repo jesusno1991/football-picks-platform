@@ -56,12 +56,14 @@ def test_flashscore_match_stats_normalize_to_internal_statistics(monkeypatch):
 
     def fake_get(url, headers=None, timeout=20):
         return Response(
-            [
-                {"name": "Shots on target", "home": 5, "away": 2},
-                {"name": "Shots", "home": 12, "away": 6},
-                {"name": "Corners", "home": 7, "away": 3},
-                {"name": "Dangerous attacks", "home": 42, "away": 18},
-            ]
+            {
+                "match": [
+                    {"name": "Shots on target", "home_team": 5, "away_team": 2},
+                    {"name": "Shots", "home_team": 12, "away_team": 6},
+                    {"name": "Corners", "home_team": 7, "away_team": 3},
+                    {"name": "Dangerous attacks", "home_team": 42, "away_team": 18},
+                ]
+            }
         )
 
     monkeypatch.setattr("app.collectors.flashscore_provider.httpx.get", fake_get)

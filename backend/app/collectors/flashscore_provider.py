@@ -340,7 +340,7 @@ def _score_value(item: dict[str, Any], side: str) -> int | None:
 def _normalize_statistics_payload(payload: Any) -> list[dict[str, Any]]:
     nodes = _as_list(payload)
     if not nodes and isinstance(payload, dict):
-        nodes = _as_list(payload.get("statistics") or payload.get("stats") or payload.get("data") or payload.get("response"))
+        nodes = _as_list(payload.get("match") or payload.get("statistics") or payload.get("stats") or payload.get("data") or payload.get("response"))
     if not nodes:
         return []
     if _looks_like_team_stats(nodes):
@@ -351,8 +351,8 @@ def _normalize_statistics_payload(payload: Any) -> list[dict[str, Any]]:
         name = str(item.get("name") or item.get("type") or item.get("stat") or item.get("title") or "").strip()
         if not name:
             continue
-        home_value = item.get("home") or item.get("homeValue") or item.get("home_value") or item.get("value_home")
-        away_value = item.get("away") or item.get("awayValue") or item.get("away_value") or item.get("value_away")
+        home_value = item.get("home") or item.get("home_team") or item.get("homeValue") or item.get("home_value") or item.get("value_home")
+        away_value = item.get("away") or item.get("away_team") or item.get("awayValue") or item.get("away_value") or item.get("value_away")
         if isinstance(home_value, dict):
             home_value = home_value.get("value") or home_value.get("display")
         if isinstance(away_value, dict):
@@ -414,18 +414,23 @@ def _normalize_events_payload(payload: Any) -> list[dict[str, Any]]:
         nodes = _as_list(payload.get("events") or payload.get("summary") or payload.get("incidents") or payload.get("data"))
     events = []
     for item in nodes:
-        minute = _to_int(item.get("minute") or item.get("time") or item.get("matchTime"))
+        minute = _to_int(item.get("minute") or item.get("minutes") or item.get("time") or item.get("matchTime"))
         team = item.get("team") or item.get("participant") or {}
         side = str(item.get("side") or item.get("homeAway") or "").lower()
+        if isinstance(team, str):
+            side = team.lower()
+            team = {}
         if not team and side in {"home", "away"}:
             team = {"id": side, "name": side}
-        event_type = item.get("type") or item.get("incidentType") or item.get("category") or "event"
+        players = _as_list(item.get("players"))
+        first_player = players[0] if players else {}
+        event_type = first_player.get("type") or item.get("type") or item.get("incidentType") or item.get("category") or "event"
         detail = item.get("detail") or item.get("text") or item.get("description") or item.get("name")
         events.append(
             {
                 "time": {"elapsed": minute, "extra": _to_int(item.get("extraMinute") or item.get("addedTime"))},
                 "team": team,
-                "player": item.get("player") or {},
+                "player": item.get("player") or {"id": first_player.get("player_id"), "name": first_player.get("name")} if first_player else {},
                 "assist": item.get("assist") or {},
                 "type": str(event_type),
                 "detail": str(detail) if detail is not None else None,

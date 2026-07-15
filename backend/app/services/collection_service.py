@@ -717,6 +717,8 @@ def _upsert_standings(db: Session, competition_id: int, season: str, payload: li
 
 
 def _internal_team_id_for_provider_team(match: Match, team_raw: dict) -> int | None:
+    if not isinstance(team_raw, dict):
+        return None
     raw_id = team_raw.get("id")
     if raw_id == "home":
         return match.home_team_id
