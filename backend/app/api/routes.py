@@ -401,11 +401,14 @@ def get_match_markets(match_id: int, db: Session = Depends(get_db)) -> list[Mark
 def get_tipstrr_market_picks(
     match_date: date | None = Query(default=None, alias="date"),
     decision: str | None = None,
+    limit: int = Query(default=1000, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[TipstrrMarketPickRead]:
     target_date = match_date or date.today()
     _ensure_date_loaded(db, target_date)
-    return list_tipstrr_market_picks(db, target_date, decision)
+    rows = list_tipstrr_market_picks(db, target_date, decision)
+    return rows[offset : offset + limit]
 
 
 @router.get("/market-rankings", response_model=list[MarketRankingRead])

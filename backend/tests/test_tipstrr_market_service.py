@@ -153,6 +153,15 @@ def test_tipstrr_endpoint_returns_all_markets(client):
     assert {"1X2", "Doble oportunidad", "Goles partido", "Marcador correcto"}.issubset({row["group"] for row in data})
 
 
+def test_tipstrr_endpoint_supports_limit(client):
+    response = client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
+    assert response.status_code == 200
+
+    data = client.get("/api/tipstrr-market-picks", params={"limit": 5}).json()
+
+    assert len(data) == 5
+
+
 def test_market_optimizer_keeps_only_best_ev_per_match(db):
     match = _create_match_with_forms(db)
     system = PredictionSystem(

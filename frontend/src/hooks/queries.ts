@@ -60,10 +60,10 @@ export function usePredictionExport(date: string, enabled: boolean) {
   return useQuery({ queryKey: ['prediction-export', date], queryFn: () => fetchPredictionExport(date), enabled })
 }
 
-export function useTipstrrMarketPicks(date: string, decision?: string) {
+export function useTipstrrMarketPicks(date: string, decision?: string, limit = 1000) {
   return useQuery({
-    queryKey: ['tipstrr-market-picks', date, decision ?? 'all'],
-    queryFn: () => fetchTipstrrMarketPicks(date, decision),
+    queryKey: ['tipstrr-market-picks', date, decision ?? 'all', limit],
+    queryFn: () => fetchTipstrrMarketPicks(date, decision, limit),
   })
 }
 

@@ -72,8 +72,8 @@ export async function fetchPredictionExport(date: string) {
   return response.data
 }
 
-export async function fetchTipstrrMarketPicks(date?: string, decision?: string) {
-  const response = await api.get<TipstrrMarketPick[]>('/api/tipstrr-market-picks', { params: { date, decision } })
+export async function fetchTipstrrMarketPicks(date?: string, decision?: string, limit = 1000) {
+  const response = await api.get<TipstrrMarketPick[]>('/api/tipstrr-market-picks', { params: { date, decision, limit } })
   return response.data
 }
 
