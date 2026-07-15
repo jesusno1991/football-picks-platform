@@ -41,6 +41,14 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
         self._matches_by_date[match_date.isoformat()] = matches
         return matches
 
+    def get_live_matches(self) -> list[dict[str, Any]]:
+        raw = self._safe_get("/api/flashscore/v2/matches/live?sport_id=1&timezone=Europe%2FMadrid", default=[])
+        today = datetime.now(timezone.utc).date()
+        matches = [self._normalize_match(item, today) for item in _find_match_nodes(raw)]
+        matches = [match for match in matches if match is not None and _is_live_status(match.get("status"))]
+        self._odds_by_match.update({match["external_id"]: match.get("raw_odds", {}) for match in matches})
+        return matches
+
     def get_match(self, match_id: str) -> dict[str, Any] | None:
         return None
 
@@ -55,7 +63,13 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
         return self._history_cache[match_key].get(team_key, _empty_history())
 
     def get_match_statistics(self, match_id: str) -> list[dict[str, Any]]:
-        return _as_list(self._safe_get(f"/api/flashscore/v2/matches/match/stats?match_id={match_id}", default=[]))
+        match_key = _flashscore_key(match_id)
+        payload = _first_non_empty(
+            self._safe_get(f"/api/flashscore/v2/matches/match/stats?match_id={match_key}", default=[]),
+            self._safe_get(f"/api/flashscore/v2/matches/stats?match_id={match_key}", default=[]),
+            self._safe_get(f"/api/flashscore/v2/matches/{match_key}/stats", default=[]),
+        )
+        return _normalize_statistics_payload(payload)
 
     def get_odds(self, match_id: str) -> list[dict[str, Any]]:
         raw = self._odds_by_match.get(match_id, {})
@@ -78,6 +92,23 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
 
     def get_results(self, match_date: date) -> list[dict[str, Any]]:
         return []
+
+    def get_events(self, match_id: str) -> list[dict[str, Any]]:
+        match_key = _flashscore_key(match_id)
+        payload = _first_non_empty(
+            self._safe_get(f"/api/flashscore/v2/matches/match/summary?match_id={match_key}", default=[]),
+            self._safe_get(f"/api/flashscore/v2/matches/summary?match_id={match_key}", default=[]),
+            self._safe_get(f"/api/flashscore/v2/matches/commentary?match_id={match_key}", default=[]),
+        )
+        return _normalize_events_payload(payload)
+
+    def get_lineups(self, match_id: str) -> list[dict[str, Any]]:
+        match_key = _flashscore_key(match_id)
+        payload = _first_non_empty(
+            self._safe_get(f"/api/flashscore/v2/matches/match/lineups?match_id={match_key}", default=[]),
+            self._safe_get(f"/api/flashscore/v2/matches/lineups?match_id={match_key}", default=[]),
+        )
+        return _as_list(payload)
 
     def diagnostics(self, match_date: date) -> dict[str, Any]:
         try:
@@ -198,6 +229,9 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
             "home_team": home,
             "away_team": away,
             "kickoff_at": _parse_datetime(item, match_date),
+            "status": _normalize_status(item),
+            "home_score": _score_value(item, "home"),
+            "away_score": _score_value(item, "away"),
             "venue": _first_text(item, ["venue.name", "stadium.name"], default=None),
             "round": _first_text(item, ["round.name", "round"], default=None),
             "season": str(match_date.year),
@@ -233,6 +267,172 @@ def _empty_history() -> dict[str, Any]:
         "h2h_btts_rate": None,
         "clean_sheet_rate": None,
     }
+
+
+def _flashscore_key(match_id: str) -> str:
+    return str(match_id).replace("flashscore-", "", 1)
+
+
+def _first_non_empty(*payloads: Any) -> Any:
+    for payload in payloads:
+        if isinstance(payload, list) and payload:
+            return payload
+        if isinstance(payload, dict) and payload:
+            return payload
+    return []
+
+
+def _is_live_status(status: Any) -> bool:
+    return str(status or "").lower() in {"live", "1h", "2h", "ht", "et", "p", "in_play", "inprogress", "in progress", "first_half", "second_half", "halftime"}
+
+
+def _normalize_status(item: dict[str, Any]) -> str:
+    raw = _first_text(
+        item,
+        ["status.name", "status.description", "status.short", "stage", "stage_name", "match_status", "status.type", "status"],
+        default="scheduled",
+    )
+    lower = str(raw).strip().lower()
+    if lower in {"1st half", "first half", "1 half", "1h", "h1"}:
+        return "1H"
+    if lower in {"2nd half", "second half", "2 half", "2h", "h2"}:
+        return "2H"
+    if lower in {"half time", "halftime", "ht"}:
+        return "HT"
+    if lower in {"after extra time", "extra time", "et"}:
+        return "ET"
+    if lower in {"penalties", "penalty shootout", "p"}:
+        return "P"
+    if lower in {"finished", "ended", "ft", "full time"}:
+        return "finished"
+    if lower in {"cancelled", "canceled", "postponed", "suspended", "interrupted"}:
+        return lower
+    if lower in {"live", "in play", "in_play", "inprogress", "in progress"}:
+        return "live"
+    minute = _to_int(_first_text(item, ["minute", "time.minute", "currentMinute"], default=None))
+    if minute is not None:
+        return "1H" if minute <= 45 else "2H"
+    return str(raw or "scheduled")
+
+
+def _score_value(item: dict[str, Any], side: str) -> int | None:
+    paths = [
+        f"{side}Score.current",
+        f"{side}_score.current",
+        f"{side}Score",
+        f"{side}_score",
+        f"score.{side}",
+        f"score.current.{side}",
+        f"scores.{side}",
+        f"{side}.score",
+    ]
+    for path in paths:
+        value = _nested(item, path)
+        if isinstance(value, dict):
+            value = value.get("current") or value.get("total") or value.get("display")
+        parsed = _to_int(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _normalize_statistics_payload(payload: Any) -> list[dict[str, Any]]:
+    nodes = _as_list(payload)
+    if not nodes and isinstance(payload, dict):
+        nodes = _as_list(payload.get("statistics") or payload.get("stats") or payload.get("data") or payload.get("response"))
+    if not nodes:
+        return []
+    if _looks_like_team_stats(nodes):
+        return [_normalize_team_stat_node(item) for item in nodes if isinstance(item, dict)]
+    home_stats: list[dict[str, Any]] = []
+    away_stats: list[dict[str, Any]] = []
+    for item in nodes:
+        name = str(item.get("name") or item.get("type") or item.get("stat") or item.get("title") or "").strip()
+        if not name:
+            continue
+        home_value = item.get("home") or item.get("homeValue") or item.get("home_value") or item.get("value_home")
+        away_value = item.get("away") or item.get("awayValue") or item.get("away_value") or item.get("value_away")
+        if isinstance(home_value, dict):
+            home_value = home_value.get("value") or home_value.get("display")
+        if isinstance(away_value, dict):
+            away_value = away_value.get("value") or away_value.get("display")
+        home_stats.append({"type": _stat_name(name), "value": home_value})
+        away_stats.append({"type": _stat_name(name), "value": away_value})
+    return [
+        {"team": {"id": "home", "name": "home"}, "statistics": home_stats},
+        {"team": {"id": "away", "name": "away"}, "statistics": away_stats},
+    ]
+
+
+def _looks_like_team_stats(nodes: list[dict[str, Any]]) -> bool:
+    return any(isinstance(item.get("team"), dict) or item.get("participant") or item.get("side") in {"home", "away"} for item in nodes)
+
+
+def _normalize_team_stat_node(item: dict[str, Any]) -> dict[str, Any]:
+    team = item.get("team") or item.get("participant") or {}
+    side = str(item.get("side") or item.get("type") or team.get("type") or "").lower()
+    if not team and side in {"home", "away"}:
+        team = {"id": side, "name": side}
+    raw_stats = item.get("statistics") or item.get("stats") or item.get("items") or []
+    if isinstance(raw_stats, dict):
+        raw_stats = [{"type": key, "value": value} for key, value in raw_stats.items()]
+    stats = []
+    for stat in _as_list(raw_stats):
+        name = _stat_name(str(stat.get("type") or stat.get("name") or stat.get("stat") or ""))
+        if name:
+            stats.append({"type": name, "value": stat.get("value") or stat.get("display")})
+    return {"team": team, "statistics": stats}
+
+
+def _stat_name(name: str) -> str:
+    lower = name.strip().lower()
+    mapping = {
+        "possession": "Ball Possession",
+        "ball possession": "Ball Possession",
+        "shots": "Total Shots",
+        "total shots": "Total Shots",
+        "shots total": "Total Shots",
+        "shots on target": "Shots on Goal",
+        "shots on goal": "Shots on Goal",
+        "sot": "Shots on Goal",
+        "corners": "Corner Kicks",
+        "corner kicks": "Corner Kicks",
+        "dangerous attacks": "Dangerous Attacks",
+        "attacks dangerous": "Dangerous Attacks",
+        "expected goals": "Expected Goals",
+        "xg": "Expected Goals",
+        "yellow cards": "Yellow Cards",
+        "red cards": "Red Cards",
+    }
+    return mapping.get(lower, name)
+
+
+def _normalize_events_payload(payload: Any) -> list[dict[str, Any]]:
+    nodes = _as_list(payload)
+    if not nodes and isinstance(payload, dict):
+        nodes = _as_list(payload.get("events") or payload.get("summary") or payload.get("incidents") or payload.get("data"))
+    events = []
+    for item in nodes:
+        minute = _to_int(item.get("minute") or item.get("time") or item.get("matchTime"))
+        team = item.get("team") or item.get("participant") or {}
+        side = str(item.get("side") or item.get("homeAway") or "").lower()
+        if not team and side in {"home", "away"}:
+            team = {"id": side, "name": side}
+        event_type = item.get("type") or item.get("incidentType") or item.get("category") or "event"
+        detail = item.get("detail") or item.get("text") or item.get("description") or item.get("name")
+        events.append(
+            {
+                "time": {"elapsed": minute, "extra": _to_int(item.get("extraMinute") or item.get("addedTime"))},
+                "team": team,
+                "player": item.get("player") or {},
+                "assist": item.get("assist") or {},
+                "type": str(event_type),
+                "detail": str(detail) if detail is not None else None,
+                "comments": item.get("comment") or item.get("comments"),
+                "score": item.get("score") or {},
+            }
+        )
+    return events
 
 
 def _history_from_over_under(item: dict[str, Any], key: str) -> dict[str, Any]:
@@ -331,15 +531,19 @@ def _pick_team(item: dict[str, Any], side: str) -> dict[str, Any] | None:
 
 def _first_text(item: dict[str, Any], paths: list[str], default: Any = "") -> Any:
     for path in paths:
-        value: Any = item
-        for part in path.split("."):
-            if not isinstance(value, dict) or part not in value:
-                value = None
-                break
-            value = value[part]
+        value = _nested(item, path)
         if value not in (None, ""):
             return str(value)
     return default
+
+
+def _nested(item: dict[str, Any], path: str) -> Any:
+    value: Any = item
+    for part in path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
 
 
 def _parse_datetime(item: dict[str, Any], match_date: date) -> datetime:

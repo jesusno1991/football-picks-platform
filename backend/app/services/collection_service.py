@@ -6,7 +6,9 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.collectors.flashscore_provider import FlashScoreRapidApiProvider
 from app.collectors.factory import get_provider
+from app.core.config import get_settings
 from app.models import (
     ApiUsage,
     Competition,
@@ -238,6 +240,8 @@ def collect_schedule_data(db: Session, match_date: date | None = None) -> dict[s
                     away_team_id=away.id,
                     kickoff_at=item["kickoff_at"],
                     status=item.get("status", "scheduled"),
+                    home_score=item.get("home_score"),
+                    away_score=item.get("away_score"),
                     venue=item["venue"],
                     round=item["round"],
                     season=item["season"],
@@ -257,6 +261,91 @@ def collect_schedule_data(db: Session, match_date: date | None = None) -> dict[s
         _finish_sync_job(job, matches + competitions + teams, 1, str(exc))
         db.commit()
         raise
+
+
+def collect_flashscore_live_data(db: Session, limit: int = 50) -> dict[str, int]:
+    if not get_settings().rapidapi_key:
+        return {"matches": 0, "statistics": 0, "events": 0, "errors": 0}
+    provider = FlashScoreRapidApiProvider()
+    provider_name = provider.__class__.__name__
+    job = _start_sync_job(db, "flashscore_live", provider_name, date.today())
+    totals = {"matches": 0, "statistics": 0, "events": 0, "errors": 0}
+    try:
+        match_items = provider.get_live_matches()[:limit]
+        _record_api_usage(db, provider_name, "get_live_matches", success=True)
+        _record_raw_snapshot(db, provider_name, "get_live_matches", date.today().isoformat(), match_items)
+        competition_by_external: dict[str, Competition] = {}
+        for item in match_items:
+            home = _upsert_team(db, item["home_team"], provider_name)
+            away = _upsert_team(db, item["away_team"], provider_name)
+            competition = competition_by_external.get(item["competition_external_id"])
+            if not competition:
+                competition_data = item.get(
+                    "competition",
+                    {
+                        "external_id": item["competition_external_id"],
+                        "name": "Unknown Competition",
+                        "country": "Unknown",
+                        "season": item.get("season", str(date.today().year)),
+                        "logo_url": None,
+                    },
+                )
+                competition = db.scalar(select(Competition).where(Competition.external_id == competition_data["external_id"]))
+                if not competition:
+                    competition = Competition(**competition_data, is_active=True)
+                    db.add(competition)
+                    db.flush()
+                competition_by_external[competition.external_id] = competition
+                _upsert_mapping(db, "competition", provider_name, competition.external_id, competition.name, competition.id)
+
+            match = db.scalar(select(Match).where(Match.external_id == item["external_id"]))
+            if not match:
+                match = Match(
+                    external_id=item["external_id"],
+                    competition_id=competition.id,
+                    home_team_id=home.id,
+                    away_team_id=away.id,
+                    kickoff_at=item["kickoff_at"],
+                    status=item.get("status", "live"),
+                    home_score=item.get("home_score"),
+                    away_score=item.get("away_score"),
+                    venue=item.get("venue"),
+                    round=item.get("round"),
+                    season=item.get("season", str(date.today().year)),
+                )
+                db.add(match)
+                totals["matches"] += 1
+            else:
+                _update_match(match, item, competition, home, away)
+            db.flush()
+            _upsert_mapping(db, "fixture", provider_name, item["external_id"], f"{home.name} vs {away.name}", match.id)
+
+            try:
+                stats_payload = provider.get_match_statistics(match.external_id)
+                totals["statistics"] += _upsert_match_statistics(db, match, stats_payload)
+                _record_api_usage(db, provider_name, "get_live_match_statistics", success=True)
+            except Exception:
+                totals["errors"] += 1
+                _record_api_usage(db, provider_name, "get_live_match_statistics", success=False)
+                logger.exception("flashscore live stats failed match_id=%s", match.external_id)
+            try:
+                events_payload = provider.get_events(match.external_id)
+                totals["events"] += _upsert_events(db, match, events_payload, provider_name)
+                _record_api_usage(db, provider_name, "get_live_events", success=True)
+            except Exception:
+                totals["errors"] += 1
+                _record_api_usage(db, provider_name, "get_live_events", success=False)
+                logger.exception("flashscore live events failed match_id=%s", match.external_id)
+        _finish_sync_job(job, sum(totals.values()), totals["errors"], "ok")
+        db.commit()
+        return totals
+    except Exception as exc:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_live_matches", success=False)
+        _finish_sync_job(job, sum(totals.values()), totals["errors"], str(exc))
+        db.commit()
+        logger.exception("flashscore live sync failed")
+        return totals
 
 
 def collect_schedule_range(db: Session, date_from: date, date_to: date) -> dict[str, int]:
@@ -384,6 +473,10 @@ def _update_match(match: Match, item: dict, competition: Competition, home: Team
     match.away_team_id = away.id
     match.kickoff_at = item["kickoff_at"]
     match.status = item.get("status", match.status or "scheduled")
+    if item.get("home_score") is not None:
+        match.home_score = item.get("home_score")
+    if item.get("away_score") is not None:
+        match.away_score = item.get("away_score")
     match.venue = item.get("venue")
     match.round = item.get("round")
     match.season = item.get("season", match.season)
@@ -592,11 +685,20 @@ def _upsert_standings(db: Session, competition_id: int, season: str, payload: li
 
 def _internal_team_id_for_provider_team(match: Match, team_raw: dict) -> int | None:
     raw_id = team_raw.get("id")
+    if raw_id == "home":
+        return match.home_team_id
+    if raw_id == "away":
+        return match.away_team_id
     if raw_id is not None:
         external = f"api-football-team-{raw_id}"
         if match.home_team.external_id == external:
             return match.home_team_id
         if match.away_team.external_id == external:
+            return match.away_team_id
+        flashscore_external = f"flashscore-team-{raw_id}"
+        if match.home_team.external_id == flashscore_external:
+            return match.home_team_id
+        if match.away_team.external_id == flashscore_external:
             return match.away_team_id
     name = str(team_raw.get("name") or "").strip().lower()
     if name and match.home_team.name.strip().lower() == name:

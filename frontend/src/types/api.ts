@@ -326,6 +326,7 @@ export type LiveMatchCenterRow = {
   match_name: string
   competition: string
   country: string
+  live_data_source: string
   status: string
   minute: number
   score: { home?: number | null; away?: number | null }

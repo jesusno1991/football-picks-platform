@@ -103,6 +103,7 @@ function LiveMatchCard({ match }: { match: LiveMatchCenterRow }) {
           <div>
             <div className="text-xs font-black uppercase text-slate-500">{match.country} · {match.competition}</div>
             <h2 className="mt-1 text-lg font-black text-slate-950">{match.match_name}</h2>
+            <div className="mt-1 text-xs font-black text-cyan-700">Fuente live: {match.live_data_source}</div>
           </div>
           <div className="rounded-full bg-cyan-100 px-3 py-1 text-sm font-black text-cyan-800">{match.status} · {match.minute}'</div>
         </div>

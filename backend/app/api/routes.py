@@ -60,7 +60,7 @@ from app.schemas.schemas import (
     TeamRead,
     TipstrrMarketPickRead,
 )
-from app.services.collection_service import collect_deep_data_for_date, collect_match_deep_data, collect_mock_data, collect_schedule_data, collect_schedule_range
+from app.services.collection_service import collect_deep_data_for_date, collect_flashscore_live_data, collect_match_deep_data, collect_mock_data, collect_schedule_data, collect_schedule_range
 from app.services.goal_market_engine import evaluate_match_markets
 from app.services.prediction_service import generate_predictions
 from app.services.runtime_config import get_pick_safety_mode, set_pick_safety_mode
@@ -438,6 +438,7 @@ def get_live_picks(
 @router.get("/live-match-center")
 def get_live_match_center(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)) -> list[dict]:
     _ensure_date_loaded(db, date.today())
+    collect_flashscore_live_data(db, limit=min(limit, 50))
     live_matches = queries.list_matches_by_statuses(db, _live_statuses(), limit=limit)
     all_live_pick_rows = [_live_pick_row(row) for row in list_tipstrr_market_picks(db, date.today(), None)]
     rows = []
@@ -446,7 +447,15 @@ def get_live_match_center(limit: int = Query(default=100, ge=1, le=500), db: Ses
         events = queries.list_match_events(db, match.id)
         picks = [row for row in all_live_pick_rows if row.match_id == match.id]
         rows.append(_live_match_snapshot(match, stats, events, picks))
-    rows.sort(key=lambda row: (row["top_signal"]["priority"], row["momentum"]["total_pressure"], row["minute"]), reverse=True)
+    rows.sort(
+        key=lambda row: (
+            1 if row["live_data_source"] == "FlashScore RapidAPI" else 0,
+            row["top_signal"]["priority"],
+            row["momentum"]["total_pressure"],
+            row["minute"],
+        ),
+        reverse=True,
+    )
     return rows
 
 
@@ -1195,6 +1204,7 @@ def _live_match_snapshot(match: Match, stats: list[TeamMatchStatistics], events:
         "match_name": f"{match.home_team.name} vs {match.away_team.name}",
         "competition": match.competition.name,
         "country": match.competition.country,
+        "live_data_source": "FlashScore RapidAPI" if str(match.external_id).startswith("flashscore-") else "Base interna",
         "status": match.status,
         "minute": minute,
         "score": {
