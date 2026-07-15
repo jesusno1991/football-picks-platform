@@ -2,6 +2,7 @@ from typing import Any
 
 from app.models import Match, Odds, TeamForm
 from app.predictors.base import Predictor, stake_from_confidence
+from app.utils.time import utc_now_naive
 
 
 class CornersOver95Predictor(Predictor):
@@ -59,8 +60,6 @@ class CornersOver95Predictor(Predictor):
         )
 
     def build_draft(self, match: Match, home_form: TeamForm | None, away_form: TeamForm | None, odds: Odds | None, system) -> Any:
-        from datetime import datetime
-
         from app.predictors.base import PredictionDraft
 
         features = self.calculate_features(match, home_form, away_form, odds)
@@ -85,7 +84,7 @@ class CornersOver95Predictor(Predictor):
         )
         if self.should_publish(draft, match, system, features):
             draft.status = "published"
-            draft.published_at = datetime.utcnow()
+            draft.published_at = utc_now_naive()
         elif features.get("data_status") != "ok":
             draft.status = "insufficient_data"
         else:

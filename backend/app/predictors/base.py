@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.models import Match, Odds, PredictionSystem, TeamForm
+from app.utils.time import utc_now_naive
 
 
 @dataclass
@@ -53,7 +54,7 @@ class Predictor(ABC):
         raise NotImplementedError
 
     def should_publish(self, draft: PredictionDraft, match: Match, system: PredictionSystem, features: dict[str, Any]) -> bool:
-        if match.kickoff_at <= datetime.utcnow() + timedelta(minutes=15):
+        if match.kickoff_at <= utc_now_naive() + timedelta(minutes=15):
             return False
         if int(features.get("combined_sample", 0)) < 10:
             return False

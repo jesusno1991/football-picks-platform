@@ -74,6 +74,7 @@ from app.services.ultimate_engine import foundation_report, list_rankings, rank_
 from app.tasks.scheduled import run_maintenance
 from app.core.config import get_settings
 from app.utils.dates import local_date_from_utc_naive
+from app.utils.time import utc_now_naive
 
 router = APIRouter(prefix="/api")
 
@@ -860,7 +861,7 @@ def readiness(db: Session = Depends(get_db)) -> dict:
     api_configured = bool(settings.api_football_key or settings.football_api_key or settings.rapidapi_key)
     today = date.today()
     future_window = queries.list_matches_range(db, today, today + timedelta(days=7), limit=5000)
-    future_match_ids = [match.id for match in future_window if match.kickoff_at > datetime.utcnow()]
+    future_match_ids = [match.id for match in future_window if match.kickoff_at > utc_now_naive()]
     availability = queries.data_availability_by_match(db, future_match_ids)
     future_with_odds = sum(1 for item in availability.values() if item.get("odds"))
     future_with_stats = sum(1 for item in availability.values() if item.get("statistics"))
@@ -888,7 +889,7 @@ def readiness(db: Session = Depends(get_db)) -> dict:
     return {
         "status": status,
         "provider": provider_name,
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": utc_now_naive().isoformat(),
         "checks": checks,
         "actions": actions,
         "metrics": {

@@ -3,6 +3,7 @@ from typing import Any
 
 from app.models import Match, Odds, TeamForm
 from app.predictors.base import PredictionDraft, Predictor, stake_from_confidence
+from app.utils.time import utc_now_naive
 
 
 BLOCKED_PUBLISH_GOAL_LINES = {1.5, 2.5}
@@ -90,8 +91,6 @@ class GoalsMarketPredictor(Predictor):
         )
 
     def build_draft(self, match: Match, home_form: TeamForm | None, away_form: TeamForm | None, odds: Odds | None, system) -> PredictionDraft:
-        from datetime import datetime
-
         features = self.calculate_features(match, home_form, away_form, odds)
         probability = self.calculate_probability(features)
         fair_odds = self.calculate_fair_odds(probability)
@@ -121,7 +120,7 @@ class GoalsMarketPredictor(Predictor):
             )
         elif self.should_publish(draft, match, system, features):
             draft.status = "published"
-            draft.published_at = datetime.utcnow()
+            draft.published_at = utc_now_naive()
         elif features.get("data_status") != "ok":
             draft.status = "insufficient_data"
         else:

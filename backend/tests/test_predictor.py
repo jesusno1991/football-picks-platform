@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from app.models import Match, Odds, PredictionSystem, TeamForm
 from app.predictors.corners_over_95 import CornersOver95Predictor
+from app.utils.time import utc_now_naive
 
 
 def test_corners_predictor_returns_insufficient_data_without_sample():
@@ -19,14 +20,14 @@ def test_corners_predictor_can_publish_with_value():
         competition_id=1,
         home_team_id=1,
         away_team_id=2,
-        kickoff_at=datetime.utcnow() + timedelta(hours=3),
+        kickoff_at=utc_now_naive() + timedelta(hours=3),
         status="scheduled",
         season="2026",
     )
     home_form = TeamForm(
         team_id=1,
         competition_id=1,
-        reference_date=datetime.utcnow(),
+        reference_date=utc_now_naive(),
         matches_sample=10,
         corners_for_avg=6.5,
         corners_against_avg=4.5,
@@ -36,7 +37,7 @@ def test_corners_predictor_can_publish_with_value():
     away_form = TeamForm(
         team_id=2,
         competition_id=1,
-        reference_date=datetime.utcnow(),
+        reference_date=utc_now_naive(),
         matches_sample=10,
         corners_for_avg=5.9,
         corners_against_avg=5.2,

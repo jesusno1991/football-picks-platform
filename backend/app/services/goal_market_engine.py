@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import MarketDefinition, MarketEvaluation, Match, Odds, TeamForm
 from app.repositories.queries import latest_team_form
 from app.services.settlement_engine import SettlementDistribution, fair_odds_from_distribution
+from app.utils.time import utc_now_naive
 
 
 @dataclass(frozen=True)
@@ -268,7 +269,7 @@ def _persist_evaluations(db: Session, match: Match, rows: list[MarketEvaluationR
             "decision": row.decision,
             "reasons": json.dumps(row.reasons, ensure_ascii=False),
             "alerts": json.dumps(row.alerts, ensure_ascii=False),
-            "evaluated_at": datetime.utcnow(),
+            "evaluated_at": utc_now_naive(),
         }
         if existing:
             for key, value in payload.items():
@@ -449,7 +450,7 @@ def _settlement_ev(distribution: SettlementDistribution, odds: float) -> float:
 def _validate_market(match: Match, odd: Odds, lambdas: GoalLambdas, expected_value: float | None) -> tuple[str, list[str], list[str]]:
     reasons: list[str] = []
     alerts: list[str] = []
-    if match.kickoff_at <= datetime.utcnow():
+    if match.kickoff_at <= utc_now_naive():
         reasons.append("partido ya iniciado")
     if odd.validation_status not in {None, "mapped"}:
         reasons.append("mapeo de cuota no validado")

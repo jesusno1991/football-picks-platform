@@ -25,6 +25,7 @@ from app.models import (
     SyncJob,
     Team,
 )
+from app.utils.time import utc_now_naive
 
 
 def rank_predictions(db: Session, limit: int = 500) -> dict:
@@ -60,7 +61,7 @@ def rank_predictions(db: Session, limit: int = 500) -> dict:
             ranking.grade = grade
             ranking.publish_decision = decision
             ranking.factors_json = json.dumps(factors, ensure_ascii=False)
-            ranking.ranked_at = datetime.utcnow()
+            ranking.ranked_at = utc_now_naive()
             updated += 1
         else:
             ranking = MarketRanking(
@@ -90,7 +91,7 @@ def rank_predictions(db: Session, limit: int = 500) -> dict:
             )
             queued += 1
     run.status = "success"
-    run.finished_at = datetime.utcnow()
+    run.finished_at = utc_now_naive()
     run.records_processed = len(predictions)
     run.summary_json = json.dumps({"created": created, "updated": updated, "queued": queued}, ensure_ascii=False)
     db.commit()
@@ -166,7 +167,7 @@ def foundation_report(db: Session) -> dict:
         "Historical sync is ready, but full backfill depends on API quota and admin token.",
     ]
     return {
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": utc_now_naive().isoformat(),
         "counts": counts,
         "modules": modules,
         "missing_or_unpopulated": missing_or_unpopulated,
@@ -246,7 +247,7 @@ def _live_rankings_from_predictions(db: Session, limit: int) -> list[dict]:
                 "expected_value": prediction.expected_value,
                 "confidence": prediction.confidence,
                 "probability": prediction.predicted_probability,
-                "ranked_at": datetime.utcnow().isoformat(),
+                "ranked_at": utc_now_naive().isoformat(),
             }
         )
     return sorted(result, key=lambda item: item["rank_score"], reverse=True)

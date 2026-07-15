@@ -6,6 +6,7 @@ from app.repositories.queries import get_prediction_system
 from app.services.prediction_service import _select_best_market_for_match
 from app.services.tipstrr_market_service import build_daily_export, list_tipstrr_market_picks
 from app.services.tipstrr_market_service import build_tipstrr_predictions
+from app.utils.time import utc_now_naive
 
 
 def test_tipstrr_market_picks_include_requested_market_groups(db):
@@ -203,7 +204,7 @@ def test_daily_export_excludes_started_matches_and_stale_odds(db):
 
 
 def _create_match_with_forms(db):
-    kickoff = datetime.utcnow() + timedelta(days=1)
+    kickoff = utc_now_naive() + timedelta(days=1)
     return _create_match_with_forms_at(db, kickoff, "match-1")
 
 

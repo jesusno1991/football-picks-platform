@@ -5,6 +5,7 @@ from app.core.config import get_settings
 from app.repositories.queries import latest_odds
 from app.services.collection_service import collect_mock_data
 from app.services.prediction_service import generate_predictions
+from app.utils.time import utc_now_naive
 
 
 def test_health(client):
@@ -122,7 +123,7 @@ def test_match_list_marks_only_recent_valid_odds_as_available(client, db):
         competition_id=competition.id,
         home_team_id=home.id,
         away_team_id=away.id,
-        kickoff_at=datetime.utcnow() + timedelta(days=1),
+        kickoff_at=utc_now_naive() + timedelta(days=1),
         status="scheduled",
         venue=None,
         round=None,
@@ -140,7 +141,7 @@ def test_match_list_marks_only_recent_valid_odds_as_available(client, db):
             odds=2.0,
             provider="test",
             validation_status="mapped",
-            collected_at=datetime.utcnow() - timedelta(hours=30),
+            collected_at=utc_now_naive() - timedelta(hours=30),
         )
     )
     db.commit()
@@ -158,7 +159,7 @@ def test_latest_odds_ignores_stale_or_unverified_prices(db):
         competition_id=competition.id,
         home_team_id=home.id,
         away_team_id=away.id,
-        kickoff_at=datetime.utcnow() + timedelta(days=1),
+        kickoff_at=utc_now_naive() + timedelta(days=1),
         status="scheduled",
         venue=None,
         round=None,
@@ -177,7 +178,7 @@ def test_latest_odds_ignores_stale_or_unverified_prices(db):
                 odds=9.0,
                 provider="test",
                 validation_status="mapped",
-                collected_at=datetime.utcnow() - timedelta(hours=30),
+                collected_at=utc_now_naive() - timedelta(hours=30),
             ),
             Odds(
                 match_id=match.id,
@@ -188,7 +189,7 @@ def test_latest_odds_ignores_stale_or_unverified_prices(db):
                 odds=2.2,
                 provider="test",
                 validation_status="unverified",
-                collected_at=datetime.utcnow(),
+                collected_at=utc_now_naive(),
             ),
         ]
     )

@@ -11,6 +11,7 @@ from app.collectors.factory import get_provider
 from app.database import SessionLocal, init_db
 from app.models import HistoricalSyncWindow
 from app.services.collection_service import collect_schedule_data
+from app.utils.time import utc_now_naive
 
 logger = logging.getLogger("backfill_matches")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -46,14 +47,14 @@ def run_backfill(date_from: date, date_to: date, sleep_seconds: float = 0.2, ret
                 attempt += 1
                 try:
                     window.status = "running"
-                    window.last_attempt_at = datetime.utcnow()
+                    window.last_attempt_at = utc_now_naive()
                     db.commit()
                     result = collect_schedule_data(db, current)
                     for key in ("competitions", "teams", "matches", "forms", "odds"):
                         totals[key] += int(result.get(key, 0))
                     totals["days"] += 1
                     window.status = "success"
-                    window.completed_at = datetime.utcnow()
+                    window.completed_at = utc_now_naive()
                     window.notes = str(result)
                     db.commit()
                     logger.info("processed date=%s attempt=%s result=%s totals=%s", current.isoformat(), attempt, result, totals)

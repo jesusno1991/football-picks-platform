@@ -26,6 +26,7 @@ from app.models import (
     TeamMatchStatistics,
 )
 from app.utils.dates import local_day_bounds_utc_naive, local_range_bounds_utc_naive
+from app.utils.time import utc_now_naive
 
 
 def match_query() -> Select[tuple[Match]]:
@@ -134,7 +135,7 @@ def get_player(db: Session, player_id: int) -> Player | None:
 
 
 def list_team_matches(db: Session, team_id: int, before: bool | None = None, limit: int = 10) -> list[Match]:
-    now = datetime.utcnow()
+    now = utc_now_naive()
     stmt = match_query().where((Match.home_team_id == team_id) | (Match.away_team_id == team_id))
     if before is True:
         stmt = stmt.where(Match.kickoff_at < now).order_by(Match.kickoff_at.desc())
@@ -146,7 +147,7 @@ def list_team_matches(db: Session, team_id: int, before: bool | None = None, lim
 
 
 def list_competition_matches(db: Session, competition_id: int, before: bool | None = None, limit: int = 20) -> list[Match]:
-    now = datetime.utcnow()
+    now = utc_now_naive()
     stmt = match_query().where(Match.competition_id == competition_id)
     if before is True:
         stmt = stmt.where(Match.kickoff_at < now).order_by(Match.kickoff_at.desc())
@@ -267,7 +268,7 @@ def search_all(db: Session, q: str, limit: int = 8) -> list[dict]:
 
 
 def latest_odds(db: Session, match_id: int, market: str, selection: str, line: float | None) -> Odds | None:
-    min_collected_at = datetime.utcnow() - timedelta(hours=get_settings().export_max_odds_age_hours)
+    min_collected_at = utc_now_naive() - timedelta(hours=get_settings().export_max_odds_age_hours)
     stmt = (
         select(Odds)
         .where(
@@ -380,7 +381,7 @@ def data_availability_by_match(db: Session, match_ids: list[int]) -> dict[int, d
     ):
         availability[int(match_id)]["lineups"] = int(count) > 0
     max_age = timedelta(hours=get_settings().export_max_odds_age_hours)
-    min_collected_at = datetime.utcnow() - max_age
+    min_collected_at = utc_now_naive() - max_age
     for match_id, count in db.execute(
         select(Odds.match_id, func.count(Odds.id))
         .where(

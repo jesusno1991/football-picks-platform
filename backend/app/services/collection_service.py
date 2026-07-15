@@ -25,6 +25,7 @@ from app.models import (
     TeamMatchStatistics,
 )
 from app.repositories import queries
+from app.utils.time import utc_now_naive
 
 
 INITIAL_SYSTEMS = [
@@ -420,7 +421,7 @@ def _upsert_odds(db: Session, match: Match, payload: list[dict]) -> int:
         )
         if existing:
             existing.odds = odd["odds"]
-            existing.collected_at = datetime.utcnow()
+            existing.collected_at = utc_now_naive()
             existing.validation_status = odd.get("validation_status", existing.validation_status)
         else:
             db.add(Odds(match_id=match.id, **odd))
@@ -537,7 +538,7 @@ def _upsert_standings(db: Session, competition_id: int, season: str, payload: li
             "form": row.get("form"),
             "description": row.get("description"),
             "source_provider": provider_name,
-            "source_updated_at": datetime.utcnow(),
+            "source_updated_at": utc_now_naive(),
         }
         if existing:
             for key, value in values.items():
@@ -621,7 +622,7 @@ def _start_sync_job(db: Session, job_type: str, provider: str, target_date: date
         provider=provider,
         status="running",
         target_date=datetime.combine(target_date, datetime.min.time()),
-        started_at=datetime.utcnow(),
+        started_at=utc_now_naive(),
         records_processed=0,
         error_count=0,
     )
@@ -632,14 +633,14 @@ def _start_sync_job(db: Session, job_type: str, provider: str, target_date: date
 
 def _finish_sync_job(job: SyncJob, records: int, errors: int, message: str) -> None:
     job.status = "failed" if errors else "success"
-    job.finished_at = datetime.utcnow()
+    job.finished_at = utc_now_naive()
     job.records_processed = records
     job.error_count = errors
     job.message = message[:1000]
 
 
 def _record_api_usage(db: Session, provider: str, endpoint: str, success: bool) -> None:
-    now = datetime.utcnow()
+    now = utc_now_naive()
     period_start = datetime(now.year, now.month, now.day, now.hour)
     period_end = period_start + timedelta(hours=1)
     usage = db.scalar(
@@ -689,7 +690,7 @@ def _record_raw_snapshot(db: Session, provider: str, endpoint: str, external_id:
             response_status="normalized_snapshot",
             payload_json=payload_json,
             checksum=checksum,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=utc_now_naive() + timedelta(days=7),
         )
     )
 

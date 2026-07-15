@@ -21,6 +21,7 @@ from app.services.goal_market_engine import (
 from app.services.market_catalog import MarketSpec, base_market_catalog, merge_market_specs, supported_market_specs_from_odds
 from app.services.settlement_engine import fair_odds_from_distribution
 from app.utils.dates import local_date_from_utc_naive
+from app.utils.time import utc_now_naive
 
 
 @dataclass
@@ -75,7 +76,7 @@ def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | Non
 
 def build_daily_export(db: Session, match_date: date, now: datetime | None = None) -> dict:
     settings = get_settings()
-    now = now or datetime.utcnow()
+    now = now or utc_now_naive()
     max_odds_age = timedelta(hours=settings.export_max_odds_age_hours)
     matches = queries.list_matches(db, match_date, limit=5000)
     diagnostics = {
@@ -167,7 +168,7 @@ def build_tipstrr_predictions(db: Session, match: Match, system) -> list[Predict
                     ensure_ascii=False,
                 ),
                 status="published" if row.decision == "PUBLICABLE" else "no_bet",
-                published_at=datetime.utcnow() if row.decision == "PUBLICABLE" else None,
+                published_at=utc_now_naive() if row.decision == "PUBLICABLE" else None,
             )
         )
     return predictions
@@ -231,9 +232,10 @@ def _decision_for_market(
         return "DESCARTADO", "Mercado no soportado por el motor"
     if not odd:
         return "SIN_CUOTA", "Modelo disponible, falta cuota real del proveedor"
-    if not _is_valid_real_odd(odd, datetime.utcnow(), timedelta(hours=get_settings().export_max_odds_age_hours)):
+    now = utc_now_naive()
+    if not _is_valid_real_odd(odd, now, timedelta(hours=get_settings().export_max_odds_age_hours)):
         return "WATCH", "Cuota no verificada o desactualizada"
-    if match.kickoff_at <= datetime.utcnow():
+    if match.kickoff_at <= now:
         return "WATCH", "Partido ya iniciado o cerrado"
     if odd.odds < 1.25 or odd.odds > 8:
         return "WATCH", "Cuota fuera de rango profesional"
