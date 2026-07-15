@@ -2,7 +2,7 @@ import calendar
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -777,14 +777,8 @@ def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
         )
         or 0
     )
-    matches_without_statistics = int(
-        db.scalar(
-            select(func.count(Match.id))
-            .outerjoin(TeamMatchStatistics, TeamMatchStatistics.match_id == Match.id)
-            .where(TeamMatchStatistics.id.is_(None))
-        )
-        or 0
-    )
+    matches_with_prematch_data = _count_matches_with_prematch_data(db)
+    matches_without_statistics = max(0, matches_downloaded - matches_with_prematch_data)
     incomplete_competitions = int(
         db.scalar(
             select(func.count(Competition.id))
@@ -865,7 +859,7 @@ def readiness(db: Session = Depends(get_db)) -> dict:
     future_match_ids = [match.id for match in future_window if match.kickoff_at > utc_now_naive()]
     availability = queries.data_availability_by_match(db, future_match_ids)
     future_with_odds = sum(1 for item in availability.values() if item.get("odds"))
-    future_with_stats = sum(1 for item in availability.values() if item.get("statistics"))
+    future_with_stats = _count_matches_with_prematch_data(db, future_match_ids)
     recent_errors = int(db.scalar(select(func.count(SyncError.id))) or 0)
 
     def add_check(name: str, ok: bool, detail: str, action: str | None = None) -> None:
@@ -877,7 +871,7 @@ def readiness(db: Session = Depends(get_db)) -> dict:
     add_check("Credenciales API", api_configured and not provider_error, provider_error or "Credenciales presentes", "Configurar API_FOOTBALL_KEY o RAPIDAPI_KEY.")
     add_check("Partidos futuros", len(future_match_ids) > 0, f"{len(future_match_ids)} partidos futuros en 7 dias", "Sincronizar calendario de hoy + 7 dias.")
     add_check("Cuotas recientes", future_with_odds > 0, f"{future_with_odds} partidos futuros con cuotas recientes", "Sincronizar cuotas y revisar proveedor de odds.")
-    add_check("Estadisticas", future_with_stats > 0, f"{future_with_stats} partidos futuros con estadisticas", "Sincronizar estadisticas/historicos.")
+    add_check("Datos prepartido", future_with_stats > 0, f"{future_with_stats} partidos futuros con historicos o estadisticas", "Sincronizar estadisticas/historicos.")
     add_check("Errores de sync", recent_errors == 0, f"{recent_errors} errores registrados", "Revisar Admin > errores y reintentar tareas fallidas.")
 
     failed = [check for check in checks if not check["ok"]]
@@ -897,6 +891,7 @@ def readiness(db: Session = Depends(get_db)) -> dict:
             "future_matches_7d": len(future_match_ids),
             "future_matches_with_recent_odds": future_with_odds,
             "future_matches_with_statistics": future_with_stats,
+            "future_matches_with_prematch_data": future_with_stats,
             "sync_errors": recent_errors,
         },
     }
@@ -1022,6 +1017,32 @@ def _match_list_read(match, pick_count: int, publishable_pick_count: int = 0, av
 
 def _match_availability_flags(db: Session, match_id: int) -> dict[str, bool]:
     return queries.data_availability_by_match(db, [match_id]).get(match_id, {})
+
+
+def _count_matches_with_prematch_data(db: Session, match_ids: list[int] | None = None) -> int:
+    if match_ids == []:
+        return 0
+    statistics_exists = exists(select(1).where(TeamMatchStatistics.match_id == Match.id))
+    home_form_exists = exists(
+        select(1).where(
+            and_(
+                TeamForm.team_id == Match.home_team_id,
+                TeamForm.competition_id == Match.competition_id,
+            )
+        )
+    )
+    away_form_exists = exists(
+        select(1).where(
+            and_(
+                TeamForm.team_id == Match.away_team_id,
+                TeamForm.competition_id == Match.competition_id,
+            )
+        )
+    )
+    stmt = select(func.count(Match.id)).where(or_(statistics_exists, and_(home_form_exists, away_form_exists)))
+    if match_ids is not None:
+        stmt = stmt.where(Match.id.in_(match_ids))
+    return int(db.scalar(stmt) or 0)
 
 
 def _prediction_label(prediction) -> str:
