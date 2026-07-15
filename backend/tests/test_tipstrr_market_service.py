@@ -216,6 +216,18 @@ def test_live_picks_endpoint_returns_live_value(client, db):
     assert snapshot["momentum"]["leader"] == match.home_team.name
     assert snapshot["top_signal"]["priority"] >= 4
     assert snapshot["stats"]["home"]["shots_on_target"] == 4
+    assert snapshot["minute"] == 35
+
+
+def test_live_match_center_caps_second_half_elapsed_without_events(client, db):
+    match = _create_match_with_forms_at(db, utc_now_naive() - timedelta(minutes=150), "match-live-old")
+    match.status = "2H"
+    db.commit()
+
+    center = client.get("/api/live-match-center", params={"limit": 20}).json()
+
+    snapshot = next(row for row in center if row["external_id"] == "match-live-old")
+    assert snapshot["minute"] == 90
 
 
 def test_market_optimizer_keeps_only_best_ev_per_match(db):

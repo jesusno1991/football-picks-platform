@@ -274,7 +274,7 @@ function hasAnyStats(row: LiveMatchCenterRow) {
 }
 
 function score(value?: number | null) {
-  return value ?? 0
+  return value == null ? '-' : value
 }
 
 function value(input?: number | null) {

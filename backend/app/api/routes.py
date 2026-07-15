@@ -1341,6 +1341,17 @@ def _live_minute(match: Match, events: list[FixtureEvent]) -> int:
     if event_minutes:
         return max(event_minutes)
     elapsed = int(max(0, (utc_now_naive() - match.kickoff_at).total_seconds() // 60))
+    status = (match.status or "").lower()
+    if status in {"1h", "first_half"}:
+        return min(45, elapsed)
+    if status in {"ht", "halftime"}:
+        return 45
+    if status in {"2h", "second_half", "live", "in_play"}:
+        return min(90, max(46, elapsed))
+    if status in {"et"}:
+        return min(120, max(91, elapsed))
+    if status in {"p"}:
+        return 120
     return min(120, elapsed)
 
 
