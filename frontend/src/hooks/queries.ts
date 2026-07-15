@@ -5,6 +5,7 @@ import {
   fetchCompetition,
   fetchCompetitions,
   fetchCompetitionStandings,
+  fetchLiveMatchCenter,
   fetchLivePicks,
   fetchMatch,
   fetchMatchInfo,
@@ -70,6 +71,10 @@ export function useTipstrrMarketPicks(date: string, decision?: string, limit = 1
 
 export function useLivePicks(limit = 500) {
   return useQuery({ queryKey: ['live-picks', limit], queryFn: () => fetchLivePicks(limit), refetchInterval: 60_000 })
+}
+
+export function useLiveMatchCenter(limit = 100) {
+  return useQuery({ queryKey: ['live-match-center', limit], queryFn: () => fetchLiveMatchCenter(limit), refetchInterval: 45_000 })
 }
 
 export function useMarketRankings() {

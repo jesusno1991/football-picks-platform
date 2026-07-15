@@ -320,6 +320,44 @@ export type SystemAlert = {
   action: string
 }
 
+export type LiveMatchCenterRow = {
+  match_id: number
+  external_id: string
+  match_name: string
+  competition: string
+  country: string
+  status: string
+  minute: number
+  score: { home?: number | null; away?: number | null }
+  teams: { home: string; away: string }
+  stats: {
+    home: Record<string, number | null>
+    away: Record<string, number | null>
+  }
+  momentum: {
+    home_pressure: number
+    away_pressure: number
+    total_pressure: number
+    leader: string
+    pressure_gap: number
+    temperature: string
+  }
+  top_signal: {
+    label: string
+    market: string
+    confidence: number
+    priority: number
+    reason: string
+  }
+  recent_events: { minute?: number | null; type: string; detail?: string | null; team?: string | null }[]
+  picks: {
+    live_value: number
+    watch: number
+    total: number
+    best?: Record<string, unknown> | null
+  }
+}
+
 export type MarketRanking = {
   prediction_id: number
   match_id: number

@@ -16,6 +16,7 @@ from app.models import (
     CalibrationRun,
     Competition,
     DataQualitySnapshot,
+    FixtureEvent,
     HistoricalSyncWindow,
     Match,
     MarketRanking,
@@ -418,7 +419,7 @@ def get_live_picks(
     db: Session = Depends(get_db),
 ) -> list[TipstrrMarketPickRead]:
     _ensure_date_loaded(db, date.today())
-    live_statuses = {"live", "1h", "2h", "ht", "et", "p", "in_play", "first_half", "second_half", "halftime"}
+    live_statuses = _live_statuses()
     rows = [
         _live_pick_row(row)
         for row in list_tipstrr_market_picks(db, date.today(), None)
@@ -432,6 +433,21 @@ def get_live_picks(
         )
     )
     return rows[:limit]
+
+
+@router.get("/live-match-center")
+def get_live_match_center(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)) -> list[dict]:
+    _ensure_date_loaded(db, date.today())
+    live_matches = queries.list_matches_by_statuses(db, _live_statuses(), limit=limit)
+    all_live_pick_rows = [_live_pick_row(row) for row in list_tipstrr_market_picks(db, date.today(), None)]
+    rows = []
+    for match in live_matches:
+        stats = queries.list_match_statistics(db, match.id)
+        events = queries.list_match_events(db, match.id)
+        picks = [row for row in all_live_pick_rows if row.match_id == match.id]
+        rows.append(_live_match_snapshot(match, stats, events, picks))
+    rows.sort(key=lambda row: (row["top_signal"]["priority"], row["momentum"]["total_pressure"], row["minute"]), reverse=True)
+    return rows
 
 
 @router.get("/market-rankings", response_model=list[MarketRankingRead])
@@ -1153,6 +1169,197 @@ def _live_pick_row(row):
     return replace(row, decision="LIVE_VALUE", reason="Live: valor positivo con cuota real")
 
 
+def _live_match_snapshot(match: Match, stats: list[TeamMatchStatistics], events: list[FixtureEvent], picks: list) -> dict:
+    home_stats = next((row for row in stats if row.team_id == match.home_team_id or row.is_home), None)
+    away_stats = next((row for row in stats if row.team_id == match.away_team_id or not row.is_home), None)
+    minute = _live_minute(match, events)
+    home_pressure = _pressure_score(home_stats)
+    away_pressure = _pressure_score(away_stats)
+    total_pressure = home_pressure + away_pressure
+    pressure_gap = home_pressure - away_pressure
+    recent_events = [
+        {
+            "minute": event.minute,
+            "type": event.event_type,
+            "detail": event.detail,
+            "team": _event_team_name(match, event.team_id),
+        }
+        for event in events[-5:]
+    ]
+    live_value = [pick for pick in picks if pick.decision == "LIVE_VALUE"]
+    watch = [pick for pick in picks if pick.decision == "WATCH"]
+    top_signal = _top_live_signal(match, minute, home_stats, away_stats, home_pressure, away_pressure, live_value)
+    return {
+        "match_id": match.id,
+        "external_id": match.external_id,
+        "match_name": f"{match.home_team.name} vs {match.away_team.name}",
+        "competition": match.competition.name,
+        "country": match.competition.country,
+        "status": match.status,
+        "minute": minute,
+        "score": {
+            "home": match.home_score,
+            "away": match.away_score,
+        },
+        "teams": {
+            "home": match.home_team.name,
+            "away": match.away_team.name,
+        },
+        "stats": {
+            "home": _stats_payload(home_stats),
+            "away": _stats_payload(away_stats),
+        },
+        "momentum": {
+            "home_pressure": round(home_pressure, 1),
+            "away_pressure": round(away_pressure, 1),
+            "total_pressure": round(total_pressure, 1),
+            "leader": match.home_team.name if pressure_gap > 8 else match.away_team.name if pressure_gap < -8 else "Equilibrado",
+            "pressure_gap": round(pressure_gap, 1),
+            "temperature": _temperature(total_pressure, minute),
+        },
+        "top_signal": top_signal,
+        "recent_events": recent_events,
+        "picks": {
+            "live_value": len(live_value),
+            "watch": len(watch),
+            "total": len(picks),
+            "best": _pick_summary(live_value[0] if live_value else watch[0] if watch else None),
+        },
+    }
+
+
+def _pressure_score(stats: TeamMatchStatistics | None) -> float:
+    if not stats:
+        return 0.0
+    return (
+        _num(stats.dangerous_attacks) * 0.45
+        + _num(stats.shots_on_target) * 5.5
+        + _num(stats.shots) * 1.8
+        + _num(stats.corners) * 2.6
+        + _num(stats.possession) * 0.12
+        + _num(stats.xg) * 18
+    )
+
+
+def _top_live_signal(
+    match: Match,
+    minute: int,
+    home_stats: TeamMatchStatistics | None,
+    away_stats: TeamMatchStatistics | None,
+    home_pressure: float,
+    away_pressure: float,
+    live_value: list,
+) -> dict:
+    total_goals = (match.home_score or 0) + (match.away_score or 0)
+    total_sot = _num(home_stats.shots_on_target if home_stats else None) + _num(away_stats.shots_on_target if away_stats else None)
+    total_shots = _num(home_stats.shots if home_stats else None) + _num(away_stats.shots if away_stats else None)
+    total_corners = _num(home_stats.corners if home_stats else None) + _num(away_stats.corners if away_stats else None)
+    total_pressure = home_pressure + away_pressure
+    pressure_gap = home_pressure - away_pressure
+    if live_value:
+        pick = live_value[0]
+        return {
+            "label": "Valor live detectado",
+            "market": pick.label,
+            "confidence": min(95, max(55, int(pick.merlin_score))),
+            "priority": 5,
+            "reason": pick.reason,
+        }
+    if total_pressure > 85 and total_sot >= 4 and minute <= 75:
+        leader = match.home_team.name if pressure_gap >= 0 else match.away_team.name
+        return {
+            "label": f"Ritmo alto de gol: {leader} empuja mas",
+            "market": "Gol / Over live",
+            "confidence": min(88, int(55 + total_sot * 5 + min(total_pressure, 120) / 8)),
+            "priority": 4,
+            "reason": f"{int(total_sot)} tiros a puerta, {int(total_shots)} tiros y presion total {round(total_pressure, 1)}.",
+        }
+    if abs(pressure_gap) > 25 and max(home_pressure, away_pressure) > 55:
+        leader = match.home_team.name if pressure_gap > 0 else match.away_team.name
+        return {
+            "label": f"Dominio live claro: {leader}",
+            "market": "Equipo siguiente gol / equipo marca",
+            "confidence": min(82, int(52 + abs(pressure_gap) / 2)),
+            "priority": 3,
+            "reason": f"Diferencia de presion {round(abs(pressure_gap), 1)}.",
+        }
+    if total_corners >= max(4, minute / 12) and minute <= 80:
+        return {
+            "label": "Ritmo de corners activo",
+            "market": "Corners live",
+            "confidence": min(80, int(48 + total_corners * 4)),
+            "priority": 2,
+            "reason": f"{int(total_corners)} corners acumulados en minuto {minute}.",
+        }
+    return {
+        "label": "Sin lectura fuerte",
+        "market": "Esperar",
+        "confidence": 0,
+        "priority": 1,
+        "reason": "Faltan estadisticas live suficientes o ritmo claro.",
+    }
+
+
+def _stats_payload(stats: TeamMatchStatistics | None) -> dict:
+    return {
+        "possession": _num_or_none(stats.possession if stats else None),
+        "shots": _num_or_none(stats.shots if stats else None),
+        "shots_on_target": _num_or_none(stats.shots_on_target if stats else None),
+        "corners": _num_or_none(stats.corners if stats else None),
+        "dangerous_attacks": _num_or_none(stats.dangerous_attacks if stats else None),
+        "xg": _num_or_none(stats.xg if stats else None),
+        "yellow_cards": _num_or_none(stats.yellow_cards if stats else None),
+        "red_cards": _num_or_none(stats.red_cards if stats else None),
+    }
+
+
+def _pick_summary(pick) -> dict | None:
+    if not pick:
+        return None
+    return {
+        "label": pick.label,
+        "decision": pick.decision,
+        "probability": pick.model_probability,
+        "odds": pick.market_odds,
+        "ev": pick.expected_value,
+        "reason": pick.reason,
+    }
+
+
+def _temperature(total_pressure: float, minute: int) -> str:
+    if total_pressure > 95 and minute < 80:
+        return "Muy caliente"
+    if total_pressure > 65:
+        return "Activa"
+    if total_pressure > 35:
+        return "Media"
+    return "Fria"
+
+
+def _live_minute(match: Match, events: list[FixtureEvent]) -> int:
+    event_minutes = [event.minute for event in events if event.minute is not None]
+    if event_minutes:
+        return max(event_minutes)
+    elapsed = int(max(0, (utc_now_naive() - match.kickoff_at).total_seconds() // 60))
+    return min(120, elapsed)
+
+
+def _event_team_name(match: Match, team_id: int | None) -> str | None:
+    if team_id == match.home_team_id:
+        return match.home_team.name
+    if team_id == match.away_team_id:
+        return match.away_team.name
+    return None
+
+
+def _num(value) -> float:
+    return float(value or 0)
+
+
+def _num_or_none(value) -> float | None:
+    return None if value is None else float(value)
+
+
 def _live_line_is_professional(row) -> bool:
     if row.line is None:
         return True
@@ -1231,7 +1438,11 @@ def _score_label(match: Match) -> str:
 
 
 def _is_live_status(status: str | None) -> bool:
-    return (status or "").lower() in {"live", "1h", "2h", "ht", "et", "p", "in_play"}
+    return (status or "").lower() in _live_statuses()
+
+
+def _live_statuses() -> set[str]:
+    return {"live", "1h", "2h", "ht", "et", "p", "in_play", "first_half", "second_half", "halftime"}
 
 
 def _ensure_date_loaded(db: Session, match_date: date) -> None:

@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team, TeamForm
+from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team, TeamForm, TeamMatchStatistics
 from app.services.collection_service import upsert_prediction_systems
 from app.repositories.queries import get_prediction_system
 from app.services.prediction_service import _select_best_market_for_match
@@ -194,15 +194,28 @@ def test_tipstrr_endpoint_supports_limit(client):
 def test_live_picks_endpoint_returns_live_value(client, db):
     match = _create_match_with_forms_at(db, utc_now_naive() - timedelta(minutes=35), "match-live")
     match.status = "1H"
+    match.home_score = 0
+    match.away_score = 0
+    db.add_all(
+        [
+            TeamMatchStatistics(match_id=match.id, team_id=match.home_team_id, is_home=True, possession=62, shots=9, shots_on_target=4, corners=5, dangerous_attacks=36, goals=0, xg=0.9),
+            TeamMatchStatistics(match_id=match.id, team_id=match.away_team_id, is_home=False, possession=38, shots=3, shots_on_target=1, corners=1, dangerous_attacks=10, goals=0, xg=0.2),
+        ]
+    )
     _add_publicable_odd(db, match, utc_now_naive() - timedelta(minutes=5))
     db.commit()
 
     data = client.get("/api/live-picks", params={"limit": 20}).json()
+    center = client.get("/api/live-match-center", params={"limit": 20}).json()
 
     assert any(row["external_id"] == "match-live" for row in data)
     target = next(row for row in data if row["external_id"] == "match-live" and row["family"] == "total_goals")
     assert target["decision"] == "LIVE_VALUE"
     assert target["reason"] == "Live: valor positivo con cuota real"
+    snapshot = next(row for row in center if row["external_id"] == "match-live")
+    assert snapshot["momentum"]["leader"] == match.home_team.name
+    assert snapshot["top_signal"]["priority"] >= 4
+    assert snapshot["stats"]["home"]["shots_on_target"] == 4
 
 
 def test_market_optimizer_keeps_only_best_ev_per_match(db):

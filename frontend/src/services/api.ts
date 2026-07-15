@@ -5,6 +5,7 @@ import type {
   Competition,
   CompetitionDetail,
   GenericInfo,
+  LiveMatchCenterRow,
   MarketEvaluation,
   MarketRanking,
   ModelHealth,
@@ -79,6 +80,11 @@ export async function fetchTipstrrMarketPicks(date?: string, decision?: string, 
 
 export async function fetchLivePicks(limit = 500) {
   const response = await api.get<TipstrrMarketPick[]>('/api/live-picks', { params: { limit } })
+  return response.data
+}
+
+export async function fetchLiveMatchCenter(limit = 100) {
+  const response = await api.get<LiveMatchCenterRow[]>('/api/live-match-center', { params: { limit } })
   return response.data
 }
 
