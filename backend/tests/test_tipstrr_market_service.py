@@ -50,12 +50,27 @@ def test_tipstrr_market_picks_find_publicable_real_odds(db):
             validation_status="mapped",
         )
     )
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Bet365",
+            market="goals",
+            market_family="total_goals",
+            period="full_time",
+            team_scope="all",
+            selection="over",
+            line=2.5,
+            odds=3.6,
+            provider="test",
+            validation_status="mapped",
+        )
+    )
     db.commit()
 
     rows = list_tipstrr_market_picks(db, match.kickoff_at.date(), "PUBLICABLE")
 
     assert any(row.group == "Goles partido" and row.family == "total_goals" and row.selection == "over" and row.line == 3.0 for row in rows)
-    assert all(not (row.family == "total_goals" and row.team_scope == "all" and row.selection == "over" and row.line in {1.5, 2.5}) for row in rows)
+    assert any(row.group == "Goles partido" and row.family == "total_goals" and row.selection == "over" and row.line == 2.5 for row in rows)
 
 
 def test_tipstrr_decision_filter_accepts_ready_to_publish_alias(db):
@@ -97,7 +112,7 @@ def test_tipstrr_generator_creates_prediction_rows_for_new_markets(db):
     assert "tipstrr:asian_handicap:first_half:home" in markets
     assert "tipstrr:win_btts:full_time:all" in markets
     assert "tipstrr:first_goal:full_time:all" in markets
-    assert all(not (prediction.market == "tipstrr:total_goals:full_time:all" and prediction.selection == "over" and prediction.line in {1.5, 2.5}) for prediction in predictions if prediction.status == "published")
+    assert any(prediction.market == "tipstrr:total_goals:full_time:all" and prediction.selection == "over" and prediction.line in {1.5, 2.5} for prediction in predictions)
 
 
 def test_tipstrr_endpoint_returns_all_markets(client):

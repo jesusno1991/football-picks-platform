@@ -151,8 +151,6 @@ def _is_publishable_market_candidate(prediction: Prediction) -> bool:
         return False
     if prediction.predicted_probability is None:
         return False
-    if prediction.market == "goals" and prediction.selection == "over" and prediction.line in {1.5, 2.5}:
-        return False
     return prediction.status == "published"
 
 

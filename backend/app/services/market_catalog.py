@@ -44,7 +44,7 @@ def base_market_catalog() -> list[MarketSpec]:
     specs.extend(_draw_no_bet())
     specs.extend(_double_chance())
     specs.extend(_win_btts())
-    specs.extend(_totals("Goles partido", "full_time", "all", (3.0, 3.25)))
+    specs.extend(_totals("Goles partido", "full_time", "all", (1.5, 2.5, 3.0, 3.25)))
     specs.extend(_totals("Goles al descanso", "first_half", "all", (0.5, 1.0, 1.25)))
     specs.extend(_totals("Goles local", "full_time", "home", (1.5, 2.5)))
     specs.extend(_totals("Goles visitante", "full_time", "away", (0.5, 1.5)))

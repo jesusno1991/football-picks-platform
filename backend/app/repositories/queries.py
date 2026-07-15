@@ -2,7 +2,7 @@ from datetime import date
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import Select, and_, func, not_, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.core.config import get_settings
@@ -302,8 +302,6 @@ def list_predictions(db: Session, status: str | None = None, market: str | None 
     )
     if status:
         stmt = stmt.where(Prediction.status == status)
-        if status == "published":
-            stmt = stmt.where(_not_blocked_publish_market())
     if market:
         stmt = stmt.where(Prediction.market == market)
     return list(db.scalars(stmt.order_by(Prediction.generated_at.desc())).unique())
@@ -329,8 +327,6 @@ def list_predictions_for_date(
     )
     if status:
         stmt = stmt.where(Prediction.status == status)
-        if status == "published":
-            stmt = stmt.where(_not_blocked_publish_market())
     if market:
         stmt = stmt.where(Prediction.market == market)
     return list(db.scalars(stmt.order_by(Prediction.generated_at.desc())).unique())
@@ -352,10 +348,7 @@ def pick_counts_by_match(db: Session) -> dict[int, int]:
 def publishable_counts_by_match(db: Session) -> dict[int, int]:
     rows = db.execute(
         select(Prediction.match_id, func.count(Prediction.id))
-        .where(
-            Prediction.status.in_(["published", "ready_to_publish", "publishable"]),
-            _not_blocked_publish_market(),
-        )
+        .where(Prediction.status.in_(["published", "ready_to_publish", "publishable"]))
         .group_by(Prediction.match_id)
     ).all()
     return {int(match_id): int(count) for match_id, count in rows}
@@ -394,13 +387,3 @@ def data_availability_by_match(db: Session, match_ids: list[int]) -> dict[int, d
     ):
         availability[int(match_id)]["odds"] = int(count) > 0
     return availability
-
-
-def _not_blocked_publish_market():
-    return not_(
-        and_(
-            Prediction.market == "goals",
-            Prediction.selection == "over",
-            Prediction.line.in_([1.5, 2.5]),
-        )
-    )

@@ -37,7 +37,7 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
           <h1 className="text-2xl font-black">{onlyPublishable ? 'Picks para publicar' : 'Predicciones'}</h1>
           <p className="text-sm font-semibold text-slate-500">
             {onlyPublishable
-              ? 'Solo aparecen las señales válidas para publicar. Over 1.5 y Over 2.5 están bloqueados.'
+              ? 'Solo aparecen las señales válidas para publicar. Over 1.5 y Over 2.5 vuelven a estar permitidos si pasan los filtros.'
               : 'Predicciones generadas antes del inicio, incluyendo candidatos y descartes.'}
           </p>
         </div>

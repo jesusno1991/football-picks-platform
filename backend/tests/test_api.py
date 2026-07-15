@@ -307,17 +307,18 @@ def test_generate_predictions_creates_prematch_pick(client):
     assert any(prediction["line"] in {1.5, 2.5, 3.5} for prediction in predictions)
 
 
-def test_publishable_picks_exclude_over_15_and_over_25(client):
+def test_publishable_picks_can_include_over_15_and_over_25(client):
     client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
     client.post("/api/admin/generate-predictions", headers={"X-Admin-Token": "test-secret"})
 
     predictions = client.get("/api/predictions", params={"status": "published"}).json()
-    blocked = [
+    low_goal_lines = [
         prediction
         for prediction in predictions
         if prediction["market"] == "goals" and prediction["selection"] == "over" and prediction["line"] in {1.5, 2.5}
     ]
-    assert blocked == []
+    assert low_goal_lines
+    assert all("bloqueado" not in prediction["explanation"].lower() for prediction in low_goal_lines)
 
 
 def test_match_detail_contains_forms_and_predictions(client):

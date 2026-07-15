@@ -241,8 +241,6 @@ def _decision_for_market(
         return "WATCH", "Cuota fuera de rango profesional"
     if spec.family in {"correct_score", "first_goal", "qualification"}:
         return "WATCH", "Mercado de alta varianza o contexto especial, no publicacion automatica"
-    if _is_blocked_low_goal_publish(spec):
-        return "WATCH", "Linea de goles bloqueada para publicacion"
     if lambdas.sample_size < 20 or lambdas.data_quality < 50:
         return "WATCH", "Falta historico suficiente"
     if risk == "high":
@@ -274,16 +272,6 @@ def _odd_matches_spec(odd: Odds, spec: MarketSpec) -> bool:
 
 def _legacy_family(market: str) -> str:
     return {"goals": "total_goals", "team_goals": "total_goals", "btts": "btts", "result": "match_result"}.get(market, market)
-
-
-def _is_blocked_low_goal_publish(spec: TipstrrMarketSpec) -> bool:
-    return (
-        spec.family == "total_goals"
-        and spec.period == "full_time"
-        and spec.team_scope == "all"
-        and spec.selection == "over"
-        and spec.line in {1.5, 2.5}
-    )
 
 
 def has_matches_for_date(db: Session, match_date: date) -> bool:
