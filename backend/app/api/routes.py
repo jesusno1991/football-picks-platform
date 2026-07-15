@@ -1186,6 +1186,7 @@ def _live_match_snapshot(match: Match, stats: list[TeamMatchStatistics], events:
     away_pressure = _pressure_score(away_stats)
     total_pressure = home_pressure + away_pressure
     pressure_gap = home_pressure - away_pressure
+    visible_events = [event for event in events if event.event_type != "live_clock"]
     recent_events = [
         {
             "minute": event.minute,
@@ -1193,7 +1194,7 @@ def _live_match_snapshot(match: Match, stats: list[TeamMatchStatistics], events:
             "detail": event.detail,
             "team": _event_team_name(match, event.team_id),
         }
-        for event in events[-5:]
+        for event in visible_events[-5:]
     ]
     live_value = [pick for pick in picks if pick.decision == "LIVE_VALUE"]
     watch = [pick for pick in picks if pick.decision == "WATCH"]

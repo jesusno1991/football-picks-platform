@@ -319,6 +319,7 @@ def collect_flashscore_live_data(db: Session, limit: int = 50) -> dict[str, int]
                 _update_match(match, item, competition, home, away)
             db.flush()
             _upsert_mapping(db, "fixture", provider_name, item["external_id"], f"{home.name} vs {away.name}", match.id)
+            _upsert_live_clock(db, match, item.get("live_minute"), provider_name)
 
             try:
                 stats_payload = provider.get_match_statistics(match.external_id)
@@ -346,6 +347,38 @@ def collect_flashscore_live_data(db: Session, limit: int = 50) -> dict[str, int]
         db.commit()
         logger.exception("flashscore live sync failed")
         return totals
+
+
+def _upsert_live_clock(db: Session, match: Match, minute: int | None, provider_name: str) -> None:
+    if minute is None:
+        return
+    existing = db.scalar(
+        select(FixtureEvent).where(
+            FixtureEvent.match_id == match.id,
+            FixtureEvent.event_type == "live_clock",
+        )
+    )
+    if existing:
+        existing.minute = minute
+        existing.source_provider = provider_name
+        return
+    db.add(
+        FixtureEvent(
+            match_id=match.id,
+            team_id=None,
+            player_id=None,
+            assist_player_id=None,
+            minute=minute,
+            extra_minute=None,
+            event_type="live_clock",
+            detail="FlashScore live clock",
+            comments=None,
+            score_home=match.home_score,
+            score_away=match.away_score,
+            source_provider=provider_name,
+            raw_payload=None,
+        )
+    )
 
 
 def collect_schedule_range(db: Session, date_from: date, date_to: date) -> dict[str, int]:

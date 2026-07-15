@@ -230,6 +230,7 @@ class FlashScoreRapidApiProvider(FootballDataProvider):
             "away_team": away,
             "kickoff_at": _parse_datetime(item, match_date),
             "status": _normalize_status(item),
+            "live_minute": _to_int(_first_text(item, ["match_status.live_minute", "match_status.live_time", "live_minute", "minute"], default=None)),
             "home_score": _score_value(item, "home"),
             "away_score": _score_value(item, "away"),
             "venue": _first_text(item, ["venue.name", "stadium.name"], default=None),
@@ -289,7 +290,7 @@ def _is_live_status(status: Any) -> bool:
 def _normalize_status(item: dict[str, Any]) -> str:
     raw = _first_text(
         item,
-        ["status.name", "status.description", "status.short", "stage", "stage_name", "match_status", "status.type", "status"],
+        ["match_status.stage", "status.name", "status.description", "status.short", "stage", "stage_name", "match_status", "status.type", "status"],
         default="scheduled",
     )
     lower = str(raw).strip().lower()

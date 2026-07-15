@@ -29,6 +29,7 @@ def test_flashscore_live_matches_normalize_status_and_score(monkeypatch):
                         "awayTeam": {"id": "a1", "name": "Away FC"},
                         "tournament": {"id": "t1", "name": "Live League"},
                         "country": {"name": "World"},
+                        "match_status": {"stage": "2nd Half", "is_in_progress": True, "live_minute": 56},
                         "status": {"type": "inprogress", "description": "2nd half"},
                         "homeScore": {"current": 2},
                         "awayScore": {"current": 1},
@@ -44,6 +45,7 @@ def test_flashscore_live_matches_normalize_status_and_score(monkeypatch):
 
     assert matches[0]["external_id"] == "flashscore-abc123"
     assert matches[0]["status"] == "2H"
+    assert matches[0]["live_minute"] == 56
     assert matches[0]["home_score"] == 2
     assert matches[0]["away_score"] == 1
 
