@@ -126,6 +126,35 @@ def test_tipstrr_market_pick_includes_audit_rules(db):
     assert row.publish_blocked_by_odds is False
 
 
+def test_extreme_goal_under_line_is_not_publicable(db):
+    match = _create_match_with_forms(db)
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Bet365",
+            market="goals",
+            market_family="total_goals",
+            period="full_time",
+            team_scope="all",
+            selection="under",
+            line=9.5,
+            odds=1.25,
+            provider="test",
+            validation_status="mapped",
+        )
+    )
+    db.commit()
+
+    rows = list_tipstrr_market_picks(db, match.kickoff_at.date())
+    row = next(item for item in rows if item.family == "total_goals" and item.selection == "under" and item.line == 9.5)
+    publicable = list_tipstrr_market_picks(db, match.kickoff_at.date(), "PUBLICABLE")
+
+    assert row.decision == "WATCH"
+    assert row.publish_blocked_by_config is True
+    assert "Linea fuera de rango profesional para publicacion" in row.failed_rules
+    assert all(not (item.family == "total_goals" and item.selection == "under" and item.line == 9.5) for item in publicable)
+
+
 def test_tipstrr_generator_creates_prediction_rows_for_new_markets(db):
     match = _create_match_with_forms(db)
     upsert_prediction_systems(db)

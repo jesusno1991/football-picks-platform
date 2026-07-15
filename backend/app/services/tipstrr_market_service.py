@@ -291,6 +291,11 @@ def _decision_for_market(
         audit["publish_blocked_by_config"] = True
         return "WATCH", "Mercado de alta varianza o contexto especial, no publicacion automatica", audit
     _pass(audit, "Mercado permitido para publicacion")
+    if not _market_line_is_professional(spec):
+        _fail(audit, "Linea fuera de rango profesional para publicacion")
+        audit["publish_blocked_by_config"] = True
+        return "WATCH", "Linea demasiado extrema para publicacion automatica", audit
+    _pass(audit, "Linea dentro de rango profesional")
     if model_probability is None or model_probability < thresholds["min_probability"]:
         _fail(audit, f"Probabilidad inferior al minimo {thresholds['min_probability']:.2f}")
         audit["publish_blocked_by_ev"] = True
@@ -520,3 +525,22 @@ def _safety_thresholds(mode: str) -> dict:
         "min_sample": 20,
         "allowed_risk": {"low", "medium"},
     }
+
+
+def _market_line_is_professional(spec: MarketSpec) -> bool:
+    if spec.line is None:
+        return True
+    line = abs(float(spec.line))
+    if spec.family == "total_goals":
+        if spec.period == "first_half" and spec.team_scope == "all":
+            return 0.5 <= line <= 2.5
+        if spec.period == "first_half" and spec.team_scope in {"home", "away"}:
+            return 0.5 <= line <= 1.5
+        if spec.team_scope in {"home", "away"}:
+            return 0.5 <= line <= 3.5
+        return 0.5 <= line <= 4.5
+    if spec.family == "asian_handicap":
+        if spec.period == "first_half":
+            return line <= 1.5
+        return line <= 3.0
+    return True
