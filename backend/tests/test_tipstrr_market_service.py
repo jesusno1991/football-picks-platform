@@ -383,6 +383,33 @@ def test_low_data_quality_watch_does_not_show_ev_as_opportunity(db):
     assert row.expected_value is None
 
 
+def test_probability_blocked_watch_does_not_show_ev_as_opportunity(db):
+    match = _create_match_with_forms(db)
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Bet365",
+            market="result",
+            market_family="match_result",
+            period="full_time",
+            team_scope="all",
+            selection="draw",
+            line=None,
+            odds=4.5,
+            provider="test",
+            validation_status="mapped",
+        )
+    )
+    db.commit()
+
+    rows = list_tipstrr_market_picks(db, match.kickoff_at.date())
+    row = next(item for item in rows if item.family == "match_result" and item.selection == "draw")
+
+    assert row.decision == "WATCH"
+    assert row.publish_blocked_by_ev is True
+    assert row.expected_value is None
+
+
 def _create_match_with_forms(db):
     kickoff = utc_now_naive() + timedelta(days=1)
     return _create_match_with_forms_at(db, kickoff, "match-1")
