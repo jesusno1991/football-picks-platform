@@ -35,7 +35,7 @@ export function TeamsPage() {
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <MatchList title="Proximos partidos" matches={detail.upcoming_matches} />
+              <MatchList title="Próximos partidos" matches={detail.upcoming_matches} />
               <MatchList title="Resultados recientes" matches={detail.recent_matches} />
             </div>
             <InfoBox title="Plantilla" message={detail.squad.message} />

@@ -87,7 +87,7 @@ export function AdminPage() {
         {metrics.map(([label, value]) => <div key={String(label)} className="card p-4"><div className="text-xs font-black text-slate-500">{label}</div><div className="mt-2 text-xl font-black">{String(value)}</div></div>)}
       </div>
       <RawTable title="Ranking profesional de mercados" rows={rankings as unknown as Record<string, unknown>[]} empty="No disponible: ejecuta el ranking de mercados desde admin." />
-      <RawTable title="Ultimas sincronizaciones" rows={data.latest_sync_jobs} empty="No disponible: no hay jobs registrados." />
+      <RawTable title="Últimas sincronizaciones" rows={data.latest_sync_jobs} empty="No disponible: no hay jobs registrados." />
       <RawTable title="Uso de API" rows={data.api_usage} empty="No disponible: no hay consumo registrado." />
       <ReportBox report={report} />
     </div>

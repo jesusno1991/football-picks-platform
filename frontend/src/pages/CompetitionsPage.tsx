@@ -36,12 +36,12 @@ export function CompetitionsPage() {
               </div>
             </div>
             <div className="card overflow-hidden">
-              <div className="border-b border-line bg-slate-50 px-4 py-3 text-sm font-black">Proximos partidos</div>
+              <div className="border-b border-line bg-slate-50 px-4 py-3 text-sm font-black">Próximos partidos</div>
               {detail.next_matches.length ? detail.next_matches.map((match) => <MatchCard key={match.id} match={match} selected={false} onSelect={() => undefined} />) : <Empty />}
             </div>
             <StandingsTable rows={standings} />
           </>
-        ) : <div className="card p-6">Selecciona una competicion.</div>}
+        ) : <div className="card p-6">Selecciona una competición.</div>}
       </section>
     </div>
   )
@@ -56,10 +56,10 @@ function Empty() {
 }
 
 function StandingsTable({ rows }: { rows: { rank?: number | null; team_name: string; played?: number | null; points?: number | null; goal_difference?: number | null; form?: string | null }[] }) {
-  if (!rows.length) return <div className="card p-5 text-sm font-semibold text-slate-600">No disponible: clasificacion no sincronizada.</div>
+  if (!rows.length) return <div className="card p-5 text-sm font-semibold text-slate-600">No disponible: clasificación no sincronizada.</div>
   return (
     <div className="card overflow-x-auto">
-      <div className="border-b border-line bg-slate-50 px-4 py-3 text-sm font-black">Clasificacion</div>
+      <div className="border-b border-line bg-slate-50 px-4 py-3 text-sm font-black">Clasificación</div>
       <table className="min-w-full text-sm">
         <thead className="text-left text-xs uppercase text-slate-500"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Equipo</th><th className="px-3 py-3">PJ</th><th className="px-3 py-3">DG</th><th className="px-3 py-3">Pts</th><th className="px-3 py-3">Forma</th></tr></thead>
         <tbody>{rows.map((row, index) => <tr key={index} className="border-t border-slate-100"><td className="px-3 py-3">{row.rank ?? '-'}</td><td className="px-3 py-3 font-black">{row.team_name}</td><td className="px-3 py-3">{row.played ?? '-'}</td><td className="px-3 py-3">{row.goal_difference ?? '-'}</td><td className="px-3 py-3 font-black">{row.points ?? '-'}</td><td className="px-3 py-3">{row.form ?? '-'}</td></tr>)}</tbody>

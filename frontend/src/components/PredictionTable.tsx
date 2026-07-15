@@ -29,7 +29,7 @@ export function PredictionTable({ predictions }: { predictions: Prediction[] }) 
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
               <th className="px-3 py-3">Partido</th>
-              <th className="px-3 py-3">Competicion</th>
+              <th className="px-3 py-3">Competición</th>
               <th className="px-3 py-3"><button className="font-black uppercase" onClick={() => setSortKey('time')}>Hora</button></th>
               <th className="px-3 py-3">Mercado</th>
               <th className="px-3 py-3"><button className="font-black uppercase" onClick={() => setSortKey('probability')}>Probabilidad ↓</button></th>

@@ -11,7 +11,7 @@ export function ArchivePage() {
     <div className="space-y-4">
       <div className="card p-5">
         <h2 className="text-2xl font-black">Archivo</h2>
-        <p className="text-sm font-semibold text-slate-500">Historico de partidos, picks y predicciones por fecha.</p>
+        <p className="text-sm font-semibold text-slate-500">Histórico de partidos, picks y predicciones por fecha.</p>
         <input type="date" className="mt-4 rounded-lg border border-line px-3 py-2" value={date} onChange={(event) => setDate(event.target.value)} />
       </div>
       <div className="grid gap-4 md:grid-cols-3">

@@ -22,12 +22,12 @@ const groups = [
   'Marcador correcto',
   'Goles local',
   'Goles visitante',
-  '1a parte local',
-  '1a parte visitante',
-  'Handicap asiatico',
-  'Handicap asiatico 1a parte',
+  '1ª parte local',
+  '1ª parte visitante',
+  'Hándicap asiático',
+  'Hándicap asiático 1ª parte',
   'Primer gol',
-  'Se clasificara',
+  'Se clasificará',
 ]
 
 export function TipstrrMarketsPage() {
@@ -146,7 +146,7 @@ function MarketTable({ rows }: { rows: TipstrrMarketPick[] }) {
             <th className="px-3 py-3">Casa</th>
             <th className="px-3 py-3">Merlin</th>
             <th className="px-3 py-3">Riesgo</th>
-            <th className="px-3 py-3">Decision</th>
+            <th className="px-3 py-3">Decisión</th>
             <th className="px-3 py-3">Motivo</th>
           </tr>
         </thead>

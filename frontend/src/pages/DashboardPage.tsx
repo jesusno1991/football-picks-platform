@@ -26,7 +26,7 @@ export function DashboardPage() {
     <div className="space-y-5">
       <section className="grid gap-4 md:grid-cols-4">
         <Kpi icon={<CalendarDays size={18} />} label="Partidos hoy" value={todayMatches.length} />
-        <Kpi icon={<TrendingUp size={18} />} label="Partidos manana" value={tomorrowMatches.length} />
+        <Kpi icon={<TrendingUp size={18} />} label="Partidos mañana" value={tomorrowMatches.length} />
         <Kpi icon={<Star size={18} />} label="Picks para revisar" value={picks.length} />
         <Kpi icon={<TrendingUp size={18} />} label="Yield" value={`${formatDecimal(overview?.yield_percentage ?? null, 1)}%`} />
       </section>
@@ -34,7 +34,7 @@ export function DashboardPage() {
       <section className="card p-4">
         <div className="flex items-center gap-2">
           <Search size={18} />
-          <input value={q} onChange={(event) => setQ(event.target.value)} className="w-full rounded-lg border border-line px-3 py-2" placeholder="Buscar equipo, competicion, jugador o partido..." />
+          <input value={q} onChange={(event) => setQ(event.target.value)} className="w-full rounded-lg border border-line px-3 py-2" placeholder="Buscar equipo, competición, jugador o partido..." />
         </div>
         {q.trim().length >= 2 ? (
           <div className="mt-3 grid gap-2 md:grid-cols-2">

@@ -80,7 +80,7 @@ const nav: { page: Page; label: string; icon: React.ReactNode }[] = [
   { page: 'mercados', label: 'Mercados', icon: <ListChecks size={17} /> },
   { page: 'picks', label: 'Picks', icon: <Star size={17} /> },
   { page: 'predicciones', label: 'Predicciones', icon: <ListChecks size={17} /> },
-  { page: 'estadisticas', label: 'Estadisticas', icon: <BarChart3 size={17} /> },
+  { page: 'estadisticas', label: 'Estadísticas', icon: <BarChart3 size={17} /> },
   { page: 'archivo', label: 'Archivo', icon: <FileClock size={17} /> },
   { page: 'modelo', label: 'Modelo', icon: <Activity size={17} /> },
   { page: 'administracion', label: 'Admin', icon: <Shield size={17} /> },
@@ -102,21 +102,21 @@ export function App() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-5">
-      <header className="mb-5 rounded-lg border border-line bg-white p-5 shadow-sm">
+    <main className="mx-auto max-w-[1500px] px-3 py-4 sm:px-4 sm:py-5">
+      <header className="mb-5 rounded-lg border border-line bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-3xl font-black text-slate-950">The Merlin Football Hub</h1>
-            <p className="text-sm font-semibold text-slate-500">Centro de informacion futbolistica, predicciones y picks de valor.</p>
+            <h1 className="text-2xl font-black text-slate-950 sm:text-3xl">The Merlin Football Hub</h1>
+            <p className="text-sm font-semibold text-slate-500">Centro de información futbolística, predicciones y picks de valor.</p>
           </div>
-          <div className="rounded-full bg-cyan-50 px-4 py-2 text-xs font-black text-cyan-800">Datos reales de proveedores · Sin demos inventadas</div>
+          <div className="w-fit rounded-full bg-cyan-50 px-4 py-2 text-xs font-black text-cyan-800">Datos reales de proveedores · Sin demos inventadas</div>
         </div>
         <nav className="mt-5 flex gap-2 overflow-x-auto pb-1">
           {nav.map((item) => <NavButton key={item.page} active={page === item.page} onClick={() => navigate(item.page)} icon={item.icon} label={item.label} />)}
         </nav>
       </header>
 
-      <Suspense fallback={<div className="card p-6 font-bold text-slate-600">Cargando modulo...</div>}>
+      <Suspense fallback={<div className="card p-6 font-bold text-slate-600">Cargando módulo...</div>}>
         {page === 'inicio' ? <DashboardPage /> : null}
         {page === 'partidos' ? route.matchId ? <MatchDetailPage matchId={route.matchId} /> : <HomePage /> : null}
         {page === 'calendario' ? <CalendarPage /> : null}

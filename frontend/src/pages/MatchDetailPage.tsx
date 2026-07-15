@@ -20,7 +20,7 @@ export function MatchDetailPage({ matchId }: { matchId: number }) {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'resumen', label: 'Resumen' },
-    { id: 'estadisticas', label: 'Estadisticas' },
+    { id: 'estadisticas', label: 'Estadísticas' },
     { id: 'eventos', label: 'Eventos' },
     { id: 'alineaciones', label: 'Alineaciones' },
     { id: 'cuotas', label: 'Cuotas' },
@@ -71,7 +71,7 @@ export function MatchDetailPage({ matchId }: { matchId: number }) {
       </div>
 
       {tab === 'resumen' ? <SummaryPanel match={match} stats={stats} /> : null}
-      {tab === 'estadisticas' ? <GenericInfoTable title="Estadisticas del partido" info={stats} /> : null}
+      {tab === 'estadisticas' ? <GenericInfoTable title="Estadísticas del partido" info={stats} /> : null}
       {tab === 'eventos' ? <GenericInfoTable title="Eventos" info={events} /> : null}
       {tab === 'alineaciones' ? <GenericInfoTable title="Alineaciones" info={lineups} /> : null}
       {tab === 'cuotas' ? <OddsTable odds={odds} /> : null}
@@ -101,7 +101,7 @@ function SummaryPanel({ match, stats }: { match: { home_form?: Record<string, nu
     ['Picks detectados', match.pick_count],
     ['Probabilidad principal', formatPercent(match.main_probability)],
     ['Confianza', formatPercent(match.confidence)],
-    ['Estadisticas API', stats?.available ? 'Disponible' : 'No disponible'],
+    ['Estadísticas API', stats?.available ? 'Disponible' : 'No disponible'],
   ]
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -156,7 +156,7 @@ function OddsTable({ odds }: { odds: OddsRow[] }) {
           <tr>
             <th className="px-3 py-3">Casa</th>
             <th className="px-3 py-3">Mercado</th>
-            <th className="px-3 py-3">Seleccion</th>
+            <th className="px-3 py-3">Selección</th>
             <th className="px-3 py-3">Linea</th>
             <th className="px-3 py-3">Cuota</th>
             <th className="px-3 py-3">Proveedor</th>
@@ -204,7 +204,7 @@ function MarketGroups({ markets }: { markets: MarketEvaluation[] }) {
                 <th className="px-3 py-3">EV</th>
                 <th className="px-3 py-3">Merlin</th>
                 <th className="px-3 py-3">Riesgo</th>
-                <th className="px-3 py-3">Decision</th>
+                <th className="px-3 py-3">Decisión</th>
               </tr>
             </thead>
             <tbody>
@@ -237,7 +237,7 @@ function FormPanel({ title, form }: { title: string; form: Record<string, number
     ['Corners en contra', form.corners_against_avg],
     ['Tiros', form.shots_avg],
     ['Tiros a puerta', form.shots_on_target_avg],
-    ['Posesion', form.possession_avg],
+    ['Posesión', form.possession_avg],
   ]
   return (
     <div className="card p-4">
@@ -261,7 +261,7 @@ function scoreLabel(match: { home_score?: number | null; away_score?: number | n
 
 function groupLabel(market: MarketEvaluation) {
   if (market.family === 'double_chance' || market.family === 'draw_no_bet' || market.family === 'match_result') return 'Partido completo'
-  if (market.family === 'asian_handicap') return market.period === 'first_half' ? 'Handicap asiatico 1H' : 'Handicap asiatico'
+  if (market.family === 'asian_handicap') return market.period === 'first_half' ? 'Hándicap asiático 1H' : 'Hándicap asiático'
   if (market.family === 'correct_score') return 'Marcador correcto'
   if (market.period === 'first_half' && market.team_scope === 'all') return 'Primera mitad'
   if (market.period === 'second_half' && market.team_scope === 'all') return 'Segunda mitad'
@@ -273,8 +273,8 @@ function groupLabel(market: MarketEvaluation) {
 function marketLabel(market: MarketEvaluation) {
   const period = market.period === 'first_half' ? '1H' : market.period === 'second_half' ? '2H' : 'FT'
   const team = market.team_scope === 'home' ? 'Local ' : market.team_scope === 'away' ? 'Visitante ' : ''
-  if (market.family === 'total_goals') return `${team}${period} ${market.selection === 'over' ? 'Mas' : 'Menos'} de ${market.line}`
-  if (market.family === 'btts') return `${period} Ambos marcan ${market.selection === 'yes' ? 'Si' : 'No'}`
+  if (market.family === 'total_goals') return `${team}${period} ${market.selection === 'over' ? 'Más' : 'Menos'} de ${market.line}`
+  if (market.family === 'btts') return `${period} Ambos marcan ${market.selection === 'yes' ? 'Sí' : 'No'}`
   if (market.family === 'match_result') return `Resultado ${market.selection}`
   if (market.family === 'double_chance') return `Doble oportunidad ${market.selection.toUpperCase()}`
   if (market.family === 'draw_no_bet') return `Empate no apuesta ${market.selection}`
@@ -285,6 +285,6 @@ function marketLabel(market: MarketEvaluation) {
 
 function decisionLabel(value: string) {
   if (value === 'ready_to_publish') return 'Para publicar'
-  if (value === 'pending_validation') return 'Validacion'
+  if (value === 'pending_validation') return 'Validación'
   return value
 }

@@ -16,7 +16,7 @@ export function ModelHealthPage() {
     ['Publicables', data.publishable_picks],
     ['Rechazados', data.rejected_picks],
     ['Sin cuotas', data.matches_without_odds],
-    ['Sin estadisticas', data.matches_without_statistics],
+    ['Sin estadísticas', data.matches_without_statistics],
     ['Entidades sin mapear', data.unmapped_entities],
     ['Competiciones incompletas', data.incomplete_competitions],
   ]
@@ -96,9 +96,9 @@ export function ModelHealthPage() {
       </section>
 
       <div className="card p-4 text-sm font-bold text-slate-600">
-        <div className="flex items-center gap-2 font-black text-slate-900"><ShieldAlert size={18} /> Proxima sincronizacion</div>
+        <div className="flex items-center gap-2 font-black text-slate-900"><ShieldAlert size={18} /> Próxima sincronización</div>
         <div className="mt-1">{data.next_sync_hint}</div>
-        <div className="mt-1">Ultima sincronizacion: {data.last_sync_at ?? 'No disponible'}</div>
+        <div className="mt-1">Última sincronización: {data.last_sync_at ?? 'No disponible'}</div>
       </div>
     </div>
   )

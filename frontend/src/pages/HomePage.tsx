@@ -65,12 +65,12 @@ export function HomePage() {
           <div className="mt-4 grid grid-cols-3 gap-2">
             <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(-1)}>Ayer</button>
             <button className="rounded-lg bg-brand px-3 py-2 font-bold text-white" onClick={() => setDate(today)}>Hoy</button>
-            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)}>Manana</button>
+            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)}>Mañana</button>
           </div>
           <div className="mt-3 grid grid-cols-[auto_1fr_auto] gap-2">
-            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(-1)} aria-label="Dia anterior"><ChevronLeft size={18} /></button>
+            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(-1)} aria-label="Día anterior"><ChevronLeft size={18} /></button>
             <input className="w-full rounded-lg border border-line px-3 py-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)} aria-label="Dia siguiente"><ChevronRight size={18} /></button>
+            <button className="rounded-lg border border-line px-3 py-2 font-bold" onClick={() => shiftDate(1)} aria-label="Día siguiente"><ChevronRight size={18} /></button>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <select className="rounded-lg border border-line px-3 py-2 font-bold" value={month} onChange={(event) => setMonthYear(year, Number(event.target.value))}>
