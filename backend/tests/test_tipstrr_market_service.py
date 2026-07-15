@@ -323,6 +323,49 @@ def test_daily_export_excludes_started_matches_and_stale_odds(db):
     assert export["diagnostics"]["discard_reasons"]["no_recent_odds"] == 1
 
 
+def test_tipstrr_prefers_professional_odd_over_outlier(db):
+    match = _create_match_with_forms(db)
+    for odds in (2.05, 45.0):
+        db.add(
+            Odds(
+                match_id=match.id,
+                bookmaker=f"Book {odds}",
+                market="handicap",
+                market_family="asian_handicap",
+                period="full_time",
+                team_scope="away",
+                selection="handicap",
+                line=2.0,
+                odds=odds,
+                provider="test",
+                validation_status="mapped",
+            )
+        )
+    db.commit()
+
+    rows = list_tipstrr_market_picks(db, match.kickoff_at.date())
+    row = next(item for item in rows if item.family == "asian_handicap" and item.team_scope == "away" and item.line == 2.0)
+
+    assert row.market_odds == 2.05
+    assert row.bookmaker == "Book 2.05"
+
+
+def test_started_match_does_not_show_ev_or_rank_above_future_watch(db):
+    now = utc_now_naive()
+    started = _create_match_with_forms_at(db, now - timedelta(hours=2), "match-started-ranking")
+    future = _create_match_with_forms_at(db, now + timedelta(hours=4), "match-future-ranking")
+    _add_publicable_odd(db, started, now)
+    _add_publicable_odd(db, future, now)
+
+    rows = list_tipstrr_market_picks(db, now.date())
+    started_row = next(item for item in rows if item.external_id == "match-started-ranking" and item.family == "total_goals" and item.selection == "over" and item.line == 3.0)
+    future_row = next(item for item in rows if item.external_id == "match-future-ranking" and item.family == "total_goals" and item.selection == "over" and item.line == 3.0)
+
+    assert started_row.expected_value is None
+    assert "Partido ya iniciado o cerrado" in started_row.failed_rules
+    assert rows.index(future_row) < rows.index(started_row)
+
+
 def _create_match_with_forms(db):
     kickoff = utc_now_naive() + timedelta(days=1)
     return _create_match_with_forms_at(db, kickoff, "match-1")

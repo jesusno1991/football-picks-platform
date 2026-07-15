@@ -75,15 +75,7 @@ def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | Non
     if decision:
         decision_normalized = _normalize_decision_filter(decision)
         rows = [row for row in rows if row.decision == decision_normalized]
-    return sorted(
-        rows,
-        key=lambda row: (
-            0 if row.decision == "PUBLICABLE" else 1 if row.decision == "WATCH" else 2,
-            -(row.expected_value if row.expected_value is not None else -999),
-            -row.merlin_score,
-            row.kickoff_at,
-        ),
-    )
+    return _sort_market_rows(rows)
 
 
 def build_daily_export(db: Session, match_date: date, now: datetime | None = None) -> dict:
@@ -196,10 +188,11 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odd
         lambdas,
     )
     fair_odds = fair_odds_from_distribution(distribution)
-    expected_value = round(_settlement_ev(distribution, odd.odds), 6) if odd and fair_odds is not None else None
+    raw_expected_value = round(_settlement_ev(distribution, odd.odds), 6) if odd and fair_odds is not None else None
     risk = _risk_level(spec.family, spec.line)
+    decision, reason, audit = _decision_for_market(match, spec, odd, lambdas, model_probability, raw_expected_value, risk, settlement_type)
+    expected_value = _display_expected_value(match, audit, raw_expected_value)
     merlin = _merlin_score(expected_value, lambdas.data_quality, risk)
-    decision, reason, audit = _decision_for_market(match, spec, odd, lambdas, model_probability, expected_value, risk, settlement_type)
     return TipstrrMarketPick(
         match_id=match.id,
         external_id=match.external_id,
@@ -323,7 +316,9 @@ def _best_odd(odds_rows: list[Odds], spec: MarketSpec) -> Odds | None:
     candidates = [odd for odd in odds_rows if _odd_matches_spec(odd, spec)]
     if not candidates:
         return None
-    return max(candidates, key=lambda odd: odd.odds)
+    professional = [odd for odd in candidates if _odds_in_professional_range(odd.odds)]
+    pool = professional or candidates
+    return max(pool, key=lambda odd: odd.odds)
 
 
 def _odd_matches_spec(odd: Odds, spec: MarketSpec) -> bool:
@@ -337,6 +332,50 @@ def _odd_matches_spec(odd: Odds, spec: MarketSpec) -> bool:
     if spec.line is None:
         return odd.line is None
     return odd.line is not None and abs(float(odd.line) - spec.line) < 1e-9
+
+
+def _sort_market_rows(rows: list[TipstrrMarketPick]) -> list[TipstrrMarketPick]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            _row_priority(row),
+            row.kickoff_at,
+            -(row.expected_value if row.expected_value is not None else -999),
+            -row.merlin_score,
+            -(row.model_probability if row.model_probability is not None else -999),
+        ),
+    )
+
+
+def _row_priority(row: TipstrrMarketPick) -> int:
+    failed = set(row.failed_rules)
+    if row.decision == "PUBLICABLE":
+        return 0
+    if "Partido ya iniciado o cerrado" in failed:
+        return 6
+    if row.publish_blocked_by_odds:
+        return 5
+    if row.decision == "WATCH" and row.expected_value is not None and row.expected_value > 0:
+        return 1
+    if row.decision == "SIN_CUOTA":
+        return 3
+    if row.decision == "WATCH":
+        return 4
+    return 7
+
+
+def _display_expected_value(match: Match, audit: dict, raw_expected_value: float | None) -> float | None:
+    if raw_expected_value is None:
+        return None
+    if match.kickoff_at <= utc_now_naive():
+        return None
+    if audit["publish_blocked_by_odds"]:
+        return None
+    return raw_expected_value
+
+
+def _odds_in_professional_range(odds: float | None) -> bool:
+    return odds is not None and 1.25 <= float(odds) <= 8.0
 
 
 def _legacy_family(market: str) -> str:

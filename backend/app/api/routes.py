@@ -1173,9 +1173,16 @@ def _live_pick_row(row):
         return replace(row, decision="WATCH", reason="Live: datos insuficientes")
     if row.model_probability is None or row.model_probability < 0.35:
         return replace(row, decision="WATCH", reason="Live: probabilidad insuficiente")
-    if row.expected_value is None or row.expected_value < 0.03:
+    live_ev = row.expected_value if row.expected_value is not None else _live_expected_value(row)
+    if live_ev is None or live_ev < 0.03:
         return replace(row, decision="WATCH", reason="Live: sin valor suficiente")
-    return replace(row, decision="LIVE_VALUE", reason="Live: valor positivo con cuota real")
+    return replace(row, expected_value=live_ev, decision="LIVE_VALUE", reason="Live: valor positivo con cuota real")
+
+
+def _live_expected_value(row) -> float | None:
+    if row.market_odds is None or row.fair_odds is None or row.fair_odds <= 0:
+        return None
+    return round((row.market_odds / row.fair_odds) - 1, 6)
 
 
 def _live_match_snapshot(match: Match, stats: list[TeamMatchStatistics], events: list[FixtureEvent], picks: list) -> dict:
