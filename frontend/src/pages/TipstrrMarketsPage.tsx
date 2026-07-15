@@ -66,7 +66,7 @@ export function TipstrrMarketsPage() {
         <div>
           <h1 className="text-2xl font-black">Mercados principales</h1>
           <p className="text-sm font-semibold text-slate-500">
-            Mercados tipo Tipstrr para todos los partidos: 1X2, DNB, goles, marcador correcto, equipos y handicap asiatico.
+            Mercados tipo Tipstrr para todos los partidos: 1X2, DNB, goles, marcador correcto, equipos y hándicap asiático.
           </p>
         </div>
         <div className="card flex flex-wrap items-center gap-2 p-2">
@@ -146,6 +146,8 @@ function MarketTable({ rows }: { rows: TipstrrMarketPick[] }) {
             <th className="px-3 py-3">Casa</th>
             <th className="px-3 py-3">Merlin</th>
             <th className="px-3 py-3">Riesgo</th>
+            <th className="px-3 py-3">Calidad cuota</th>
+            <th className="px-3 py-3">Reglas</th>
             <th className="px-3 py-3">Decisión</th>
             <th className="px-3 py-3">Motivo</th>
           </tr>
@@ -169,12 +171,32 @@ function MarketTable({ rows }: { rows: TipstrrMarketPick[] }) {
               <td className="px-3 py-3">{row.bookmaker ?? '-'}</td>
               <td className="px-3 py-3">{formatDecimal(row.merlin_score, 1)}</td>
               <td className="px-3 py-3">{riskLabel(row.risk_level)}</td>
+              <td className="px-3 py-3">
+                <div className="font-black">{formatDecimal(row.odds_quality_score, 0)}</div>
+                <div className="text-xs font-semibold text-slate-500">{row.price_age_minutes != null ? `${formatDecimal(row.price_age_minutes, 0)} min` : '-'}</div>
+              </td>
+              <td className="min-w-[240px] px-3 py-3"><RuleSummary row={row} /></td>
               <td className="px-3 py-3"><DecisionBadge decision={row.decision} /></td>
               <td className="min-w-[220px] px-3 py-3 text-xs font-semibold text-slate-600">{row.reason}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function RuleSummary({ row }: { row: TipstrrMarketPick }) {
+  const failed = row.failed_rules.slice(0, 2)
+  const passed = row.passed_rules.slice(0, 2)
+  return (
+    <div className="flex flex-wrap gap-1">
+      {failed.length ? failed.map((rule) => (
+        <span key={rule} className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-black text-rose-700">{rule}</span>
+      )) : passed.map((rule) => (
+        <span key={rule} className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">{rule}</span>
+      ))}
+      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-700">{row.safety_mode}</span>
     </div>
   )
 }

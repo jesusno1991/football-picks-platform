@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     app_timezone: str = Field(default="Europe/Madrid", alias="APP_TIMEZONE")
     rate_limit_requests_per_minute: int = Field(default=240, alias="RATE_LIMIT_REQUESTS_PER_MINUTE")
     export_max_odds_age_hours: int = Field(default=24, alias="EXPORT_MAX_ODDS_AGE_HOURS")
+    pick_safety_mode: str = Field(default="normal", alias="PICK_SAFETY_MODE")
+    min_publish_probability: float = Field(default=0.35, alias="MIN_PUBLISH_PROBABILITY")
+    min_publish_ev: float = Field(default=0.03, alias="MIN_PUBLISH_EV")
+    min_publish_data_quality: float = Field(default=50.0, alias="MIN_PUBLISH_DATA_QUALITY")
 
     admin_token_header: str = "X-Admin-Token"
     minimum_minutes_before_kickoff: int = 15

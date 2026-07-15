@@ -12,6 +12,7 @@ import {
   fetchMarketRankings,
   fetchModelHealth,
   fetchMatches,
+  fetchPickSafetyMode,
   fetchPredictionExport,
   fetchOverview,
   fetchPlayers,
@@ -20,6 +21,7 @@ import {
   fetchReadiness,
   fetchSearch,
   fetchStandings,
+  fetchSystemAlerts,
   fetchTeamDetail,
   fetchTeams,
   fetchTipstrrMarketPicks,
@@ -75,6 +77,14 @@ export function useModelHealth() {
 
 export function useReadiness() {
   return useQuery({ queryKey: ['readiness'], queryFn: fetchReadiness })
+}
+
+export function usePickSafetyMode() {
+  return useQuery({ queryKey: ['pick-safety-mode'], queryFn: fetchPickSafetyMode })
+}
+
+export function useSystemAlerts() {
+  return useQuery({ queryKey: ['system-alerts'], queryFn: fetchSystemAlerts })
 }
 
 export function useOverview() {

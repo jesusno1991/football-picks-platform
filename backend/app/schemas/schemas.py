@@ -159,6 +159,17 @@ class TipstrrMarketPickRead(BaseModel):
     risk_level: str
     decision: str
     reason: str
+    passed_rules: list[str] = Field(default_factory=list)
+    failed_rules: list[str] = Field(default_factory=list)
+    filter_reasons: list[str] = Field(default_factory=list)
+    odds_quality_score: float = 0.0
+    price_age_minutes: float | None = None
+    publish_blocked_by_config: bool = False
+    publish_blocked_by_risk: bool = False
+    publish_blocked_by_data_quality: bool = False
+    publish_blocked_by_ev: bool = False
+    publish_blocked_by_odds: bool = False
+    safety_mode: str = "normal"
 
 
 class MatchDetailRead(MatchListRead):

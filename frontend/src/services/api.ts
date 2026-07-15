@@ -11,11 +11,13 @@ import type {
   Match,
   OddsRow,
   Overview,
+  PickSafetyMode,
   Prediction,
   PredictionExportResponse,
   Readiness,
   SearchResult,
   StandingRow,
+  SystemAlert,
   Team,
   TeamDetail,
   TipstrrMarketPick,
@@ -137,6 +139,16 @@ export async function fetchModelHealth() {
 
 export async function fetchReadiness() {
   const response = await api.get<Readiness>('/api/readiness')
+  return response.data
+}
+
+export async function fetchPickSafetyMode() {
+  const response = await api.get<PickSafetyMode>('/api/pick-safety-mode')
+  return response.data
+}
+
+export async function fetchSystemAlerts() {
+  const response = await api.get<SystemAlert[]>('/api/system-alerts')
   return response.data
 }
 

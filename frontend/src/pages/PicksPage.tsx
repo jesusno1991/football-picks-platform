@@ -205,7 +205,19 @@ function ExportMetric({ label, value }: { label: string; value: string | number 
 
 function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
   const [sortKey, setSortKey] = useState<'probability' | 'ev' | 'merlin' | 'odds'>('probability')
-  const sortedPicks = [...picks].sort((left, right) => {
+  const [marketFilter, setMarketFilter] = useState('Todos')
+  const [riskFilter, setRiskFilter] = useState('Todos')
+  const [minProbability, setMinProbability] = useState('')
+  const [minEv, setMinEv] = useState('')
+  const marketGroups = ['Todos', ...Array.from(new Set(picks.map((pick) => pick.group))).sort()]
+  const filteredPicks = picks.filter((pick) => {
+    const probabilityOk = !minProbability || value(pick.model_probability) >= Number(minProbability) / 100
+    const evOk = !minEv || value(pick.expected_value) >= Number(minEv)
+    const marketOk = marketFilter === 'Todos' || pick.group === marketFilter
+    const riskOk = riskFilter === 'Todos' || pick.risk_level === riskFilter
+    return probabilityOk && evOk && marketOk && riskOk
+  })
+  const sortedPicks = [...filteredPicks].sort((left, right) => {
     if (sortKey === 'probability') return value(right.model_probability) - value(left.model_probability)
     if (sortKey === 'ev') return value(right.expected_value) - value(left.expected_value)
     if (sortKey === 'merlin') return value(right.merlin_score) - value(left.merlin_score)
@@ -214,12 +226,25 @@ function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
 
   return (
     <div className="card overflow-hidden">
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-white p-3 text-xs font-black">
-        <span className="text-slate-500">Ordenar por:</span>
-        <SortButton active={sortKey === 'probability'} onClick={() => setSortKey('probability')} label="Mayor probabilidad" />
-        <SortButton active={sortKey === 'ev'} onClick={() => setSortKey('ev')} label="Mejor EV" />
-        <SortButton active={sortKey === 'merlin'} onClick={() => setSortKey('merlin')} label="Merlin Score" />
-        <SortButton active={sortKey === 'odds'} onClick={() => setSortKey('odds')} label="Mayor cuota" />
+      <div className="space-y-3 border-b border-line bg-white p-3 text-xs font-black">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-slate-500">Ordenar por:</span>
+          <SortButton active={sortKey === 'probability'} onClick={() => setSortKey('probability')} label="Mayor probabilidad" />
+          <SortButton active={sortKey === 'ev'} onClick={() => setSortKey('ev')} label="Mejor EV" />
+          <SortButton active={sortKey === 'merlin'} onClick={() => setSortKey('merlin')} label="Merlin Score" />
+          <SortButton active={sortKey === 'odds'} onClick={() => setSortKey('odds')} label="Mayor cuota" />
+          <span className="ml-auto text-slate-500">{sortedPicks.length} visibles de {picks.length}</span>
+        </div>
+        <div className="grid gap-2 md:grid-cols-4">
+          <select className="rounded-lg border border-line bg-white px-3 py-2 text-sm font-bold" value={marketFilter} onChange={(event) => setMarketFilter(event.target.value)}>
+            {marketGroups.map((group) => <option key={group} value={group}>{group}</option>)}
+          </select>
+          <select className="rounded-lg border border-line bg-white px-3 py-2 text-sm font-bold" value={riskFilter} onChange={(event) => setRiskFilter(event.target.value)}>
+            {['Todos', 'low', 'medium', 'high'].map((risk) => <option key={risk} value={risk}>{risk === 'Todos' ? 'Todos los riesgos' : riskLabel(risk)}</option>)}
+          </select>
+          <input className="rounded-lg border border-line px-3 py-2 text-sm font-bold" inputMode="decimal" value={minProbability} onChange={(event) => setMinProbability(event.target.value)} placeholder="Probabilidad minima %" />
+          <input className="rounded-lg border border-line px-3 py-2 text-sm font-bold" inputMode="decimal" value={minEv} onChange={(event) => setMinEv(event.target.value)} placeholder="EV minimo, ej. 0.03" />
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
@@ -233,6 +258,8 @@ function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
               <th className="px-3 py-3"><button className="font-black uppercase" onClick={() => setSortKey('ev')}>EV ↓</button></th>
               <th className="px-3 py-3"><button className="font-black uppercase" onClick={() => setSortKey('merlin')}>Merlin ↓</button></th>
               <th className="px-3 py-3">Riesgo</th>
+              <th className="px-3 py-3">Calidad cuota</th>
+              <th className="px-3 py-3">Auditoría</th>
               <th className="px-3 py-3">Motivo</th>
             </tr>
           </thead>
@@ -253,6 +280,13 @@ function MarketPickTable({ picks }: { picks: TipstrrMarketPick[] }) {
                 <td className="px-3 py-3 font-black text-emerald-700">{formatDecimal(pick.expected_value, 3)}</td>
                 <td className="px-3 py-3 font-black">{formatDecimal(pick.merlin_score, 1)}</td>
                 <td className="px-3 py-3">{pick.risk_level}</td>
+                <td className="px-3 py-3">
+                  <div className="font-black">{formatDecimal(pick.odds_quality_score, 0)}</div>
+                  <div className="text-xs font-semibold text-slate-500">{pick.price_age_minutes != null ? `${formatDecimal(pick.price_age_minutes, 0)} min` : '-'}</div>
+                </td>
+                <td className="min-w-[260px] px-3 py-3">
+                  <AuditChips pick={pick} />
+                </td>
                 <td className="px-3 py-3">{pick.reason}</td>
               </tr>
             ))}
@@ -269,6 +303,13 @@ function SortButton({ active, onClick, label }: { active: boolean; onClick: () =
 
 function value(input?: number | null) {
   return input ?? -999
+}
+
+function riskLabel(value: string) {
+  if (value === 'low') return 'Bajo'
+  if (value === 'medium') return 'Medio'
+  if (value === 'high') return 'Alto'
+  return value
 }
 
 function buildChatGptText(prompt: string, exportData: PredictionExportResponse) {
@@ -326,7 +367,27 @@ function formatMarketPickLine(index: number, pick: TipstrrMarketPick) {
     `riesgo=${pick.risk_level}`,
     `decision=${pick.decision}`,
     `motivo="${pick.reason}"`,
+    `reglas_ok="${pick.passed_rules.join('; ')}"`,
+    `reglas_fallidas="${pick.failed_rules.join('; ')}"`,
+    `calidad_cuota=${formatDecimal(pick.odds_quality_score, 0)}`,
+    `edad_cuota_min=${pick.price_age_minutes ?? '-'}`,
+    `modo=${pick.safety_mode}`,
   ].join(' | ')
+}
+
+function AuditChips({ pick }: { pick: TipstrrMarketPick }) {
+  const failed = pick.failed_rules.slice(0, 2)
+  const passed = pick.passed_rules.slice(0, 2)
+  return (
+    <div className="flex flex-wrap gap-1">
+      {failed.length ? failed.map((rule) => (
+        <span key={rule} className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-black text-rose-700">{rule}</span>
+      )) : passed.map((rule) => (
+        <span key={rule} className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">{rule}</span>
+      ))}
+      <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-700">{pick.safety_mode}</span>
+    </div>
+  )
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {

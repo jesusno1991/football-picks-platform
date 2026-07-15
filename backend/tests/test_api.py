@@ -394,6 +394,37 @@ def test_readiness_endpoint_reports_launch_checks(client):
     assert "future_matches_7d" in data["metrics"]
 
 
+def test_pick_safety_mode_can_be_read_and_changed(client):
+    read = client.get("/api/pick-safety-mode")
+    blocked = client.post("/api/admin/pick-safety-mode", params={"mode": "aggressive"})
+    changed = client.post(
+        "/api/admin/pick-safety-mode",
+        params={"mode": "conservative"},
+        headers={"X-Admin-Token": "test-secret"},
+    )
+    restored = client.post(
+        "/api/admin/pick-safety-mode",
+        params={"mode": "normal"},
+        headers={"X-Admin-Token": "test-secret"},
+    )
+
+    assert read.status_code == 200
+    assert read.json()["mode"] in {"conservative", "normal", "aggressive"}
+    assert blocked.status_code == 401
+    assert changed.status_code == 200
+    assert changed.json()["mode"] == "conservative"
+    assert restored.json()["mode"] == "normal"
+
+
+def test_system_alerts_endpoint_returns_actionable_items(client):
+    response = client.get("/api/system-alerts")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data
+    assert {"level", "title", "message", "action"} <= set(data[0])
+
+
 def test_deep_sync_day_persists_match_odds(client):
     response = client.post(
         "/api/admin/sync-day-deep",

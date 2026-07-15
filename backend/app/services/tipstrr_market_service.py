@@ -19,6 +19,7 @@ from app.services.goal_market_engine import (
     probability_for_market,
 )
 from app.services.market_catalog import MarketSpec, base_market_catalog, merge_market_specs, supported_market_specs_from_odds
+from app.services.runtime_config import get_pick_safety_mode
 from app.services.settlement_engine import fair_odds_from_distribution
 from app.utils.dates import local_date_from_utc_naive
 from app.utils.time import utc_now_naive
@@ -53,6 +54,17 @@ class TipstrrMarketPick:
     risk_level: str
     decision: str
     reason: str
+    passed_rules: list[str]
+    failed_rules: list[str]
+    filter_reasons: list[str]
+    odds_quality_score: float
+    price_age_minutes: float | None
+    publish_blocked_by_config: bool
+    publish_blocked_by_risk: bool
+    publish_blocked_by_data_quality: bool
+    publish_blocked_by_ev: bool
+    publish_blocked_by_odds: bool
+    safety_mode: str
 
 
 def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | None = None) -> list[TipstrrMarketPick]:
@@ -187,7 +199,7 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odd
     expected_value = round(_settlement_ev(distribution, odd.odds), 6) if odd and fair_odds is not None else None
     risk = _risk_level(spec.family, spec.line)
     merlin = _merlin_score(expected_value, lambdas.data_quality, risk)
-    decision, reason = _decision_for_market(match, spec, odd, lambdas, expected_value, risk, settlement_type)
+    decision, reason, audit = _decision_for_market(match, spec, odd, lambdas, model_probability, expected_value, risk, settlement_type)
     return TipstrrMarketPick(
         match_id=match.id,
         external_id=match.external_id,
@@ -216,6 +228,17 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odd
         risk_level=risk,
         decision=decision,
         reason=reason,
+        passed_rules=audit["passed_rules"],
+        failed_rules=audit["failed_rules"],
+        filter_reasons=audit["filter_reasons"],
+        odds_quality_score=audit["odds_quality_score"],
+        price_age_minutes=audit["price_age_minutes"],
+        publish_blocked_by_config=audit["publish_blocked_by_config"],
+        publish_blocked_by_risk=audit["publish_blocked_by_risk"],
+        publish_blocked_by_data_quality=audit["publish_blocked_by_data_quality"],
+        publish_blocked_by_ev=audit["publish_blocked_by_ev"],
+        publish_blocked_by_odds=audit["publish_blocked_by_odds"],
+        safety_mode=audit["safety_mode"],
     )
 
 
@@ -224,30 +247,71 @@ def _decision_for_market(
     spec: MarketSpec,
     odd: Odds | None,
     lambdas: GoalLambdas,
+    model_probability: float | None,
     expected_value: float | None,
     risk: str,
     settlement_type: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, dict]:
+    audit = _base_audit()
+    settings = get_settings()
+    thresholds = _safety_thresholds(get_pick_safety_mode())
+    audit["safety_mode"] = thresholds["mode"]
     if settlement_type == "unsupported":
-        return "DESCARTADO", "Mercado no soportado por el motor"
+        _fail(audit, "Mercado no soportado por el motor")
+        audit["publish_blocked_by_config"] = True
+        return "DESCARTADO", "Mercado no soportado por el motor", audit
+    _pass(audit, "Mercado soportado por el modelo")
     if not odd:
-        return "SIN_CUOTA", "Modelo disponible, falta cuota real del proveedor"
+        _fail(audit, "Falta cuota real del proveedor")
+        audit["publish_blocked_by_odds"] = True
+        return "SIN_CUOTA", "Modelo disponible, falta cuota real del proveedor", audit
     now = utc_now_naive()
-    if not _is_valid_real_odd(odd, now, timedelta(hours=get_settings().export_max_odds_age_hours)):
-        return "WATCH", "Cuota no verificada o desactualizada"
+    odds_audit = _validate_real_odd(odd, now, timedelta(hours=settings.export_max_odds_age_hours))
+    audit["odds_quality_score"] = odds_audit["quality_score"]
+    audit["price_age_minutes"] = odds_audit["price_age_minutes"]
+    for rule in odds_audit["passed_rules"]:
+        _pass(audit, rule)
+    for rule in odds_audit["failed_rules"]:
+        _fail(audit, rule)
+    if odds_audit["failed_rules"]:
+        audit["publish_blocked_by_odds"] = True
+        return "WATCH", "Cuota no verificada o desactualizada", audit
     if match.kickoff_at <= now:
-        return "WATCH", "Partido ya iniciado o cerrado"
+        _fail(audit, "Partido ya iniciado o cerrado")
+        audit["publish_blocked_by_config"] = True
+        return "WATCH", "Partido ya iniciado o cerrado", audit
+    _pass(audit, "Partido futuro")
     if odd.odds < 1.25 or odd.odds > 8:
-        return "WATCH", "Cuota fuera de rango profesional"
+        _fail(audit, "Cuota fuera de rango profesional")
+        audit["publish_blocked_by_odds"] = True
+        return "WATCH", "Cuota fuera de rango profesional", audit
+    _pass(audit, "Cuota dentro de rango profesional")
     if spec.family in {"correct_score", "first_goal", "qualification"}:
-        return "WATCH", "Mercado de alta varianza o contexto especial, no publicacion automatica"
-    if lambdas.sample_size < 20 or lambdas.data_quality < 50:
-        return "WATCH", "Falta historico suficiente"
-    if risk == "high":
-        return "WATCH", "Riesgo alto"
-    if expected_value is None or expected_value < 0.03:
-        return "WATCH", "Sin valor suficiente"
-    return "PUBLICABLE", "Valor positivo con cuota real"
+        _fail(audit, "Mercado reservado para estudio por alta varianza")
+        audit["publish_blocked_by_config"] = True
+        return "WATCH", "Mercado de alta varianza o contexto especial, no publicacion automatica", audit
+    _pass(audit, "Mercado permitido para publicacion")
+    if model_probability is None or model_probability < thresholds["min_probability"]:
+        _fail(audit, f"Probabilidad inferior al minimo {thresholds['min_probability']:.2f}")
+        audit["publish_blocked_by_ev"] = True
+        return "WATCH", "Probabilidad insuficiente para publicar", audit
+    _pass(audit, "Probabilidad minima superada")
+    if lambdas.sample_size < thresholds["min_sample"] or lambdas.data_quality < thresholds["min_data_quality"]:
+        _fail(audit, f"Calidad de datos inferior al minimo {thresholds['min_data_quality']:.0f}")
+        audit["publish_blocked_by_data_quality"] = True
+        return "WATCH", "Falta historico suficiente", audit
+    _pass(audit, "Calidad de datos suficiente")
+    if risk not in thresholds["allowed_risk"]:
+        _fail(audit, f"Riesgo {risk} no permitido en modo {thresholds['mode']}")
+        audit["publish_blocked_by_risk"] = True
+        return "WATCH", "Riesgo alto", audit
+    _pass(audit, "Riesgo permitido")
+    if expected_value is None or expected_value < thresholds["min_ev"]:
+        _fail(audit, f"EV inferior al minimo {thresholds['min_ev']:.3f}")
+        audit["publish_blocked_by_ev"] = True
+        return "WATCH", "Sin valor suficiente", audit
+    _pass(audit, "EV minimo superado")
+    return "PUBLICABLE", "Valor positivo con cuota real", audit
 
 
 def _best_odd(odds_rows: list[Odds], spec: MarketSpec) -> Odds | None:
@@ -314,16 +378,41 @@ def _has_recent_odds(row: TipstrrMarketPick, now: datetime, max_age: timedelta) 
     return now - row.odds_collected_at <= max_age
 
 
-def _is_valid_real_odd(odd: Odds, now: datetime, max_age: timedelta) -> bool:
+def _validate_real_odd(odd: Odds, now: datetime, max_age: timedelta) -> dict:
+    passed_rules: list[str] = []
+    failed_rules: list[str] = []
+    price_age_minutes: float | None = None
     if odd.odds <= 1:
-        return False
+        failed_rules.append("Cuota menor o igual a 1")
+    else:
+        passed_rules.append("Cuota numerica valida")
     if (odd.validation_status or "").lower() not in {"mapped", "verified", "valid"}:
-        return False
+        failed_rules.append("Cuota sin validacion de mapeo")
+    else:
+        passed_rules.append("Mapeo de cuota validado")
     if not odd.collected_at:
-        return False
-    if odd.collected_at > now + timedelta(minutes=5):
-        return False
-    return now - odd.collected_at <= max_age
+        failed_rules.append("Cuota sin timestamp")
+    else:
+        price_age_minutes = round((now - odd.collected_at).total_seconds() / 60, 2)
+        if odd.collected_at > now + timedelta(minutes=5):
+            failed_rules.append("Timestamp de cuota en el futuro")
+        elif now - odd.collected_at > max_age:
+            failed_rules.append("Cuota desactualizada")
+        else:
+            passed_rules.append("Cuota reciente")
+    quality_score = max(0.0, 100.0 - len(failed_rules) * 35.0)
+    if price_age_minutes is not None and price_age_minutes > 60:
+        quality_score = max(0.0, quality_score - min(35.0, (price_age_minutes - 60) / 30))
+    return {
+        "passed_rules": passed_rules,
+        "failed_rules": failed_rules,
+        "quality_score": round(quality_score, 1),
+        "price_age_minutes": price_age_minutes,
+    }
+
+
+def _is_valid_real_odd(odd: Odds, now: datetime, max_age: timedelta) -> bool:
+    return not _validate_real_odd(odd, now, max_age)["failed_rules"]
 
 
 def _add_reason(diagnostics: dict, reason: str) -> None:
@@ -360,4 +449,74 @@ def _row_to_export(row: TipstrrMarketPick) -> dict:
         "risk_level": row.risk_level,
         "decision": row.decision,
         "reason": row.reason,
+        "passed_rules": row.passed_rules,
+        "failed_rules": row.failed_rules,
+        "filter_reasons": row.filter_reasons,
+        "odds_quality_score": row.odds_quality_score,
+        "price_age_minutes": row.price_age_minutes,
+        "publish_blocked_by_config": row.publish_blocked_by_config,
+        "publish_blocked_by_risk": row.publish_blocked_by_risk,
+        "publish_blocked_by_data_quality": row.publish_blocked_by_data_quality,
+        "publish_blocked_by_ev": row.publish_blocked_by_ev,
+        "publish_blocked_by_odds": row.publish_blocked_by_odds,
+        "safety_mode": row.safety_mode,
+    }
+
+
+def _base_audit() -> dict:
+    return {
+        "passed_rules": [],
+        "failed_rules": [],
+        "filter_reasons": [],
+        "odds_quality_score": 0.0,
+        "price_age_minutes": None,
+        "publish_blocked_by_config": False,
+        "publish_blocked_by_risk": False,
+        "publish_blocked_by_data_quality": False,
+        "publish_blocked_by_ev": False,
+        "publish_blocked_by_odds": False,
+        "safety_mode": "normal",
+    }
+
+
+def _pass(audit: dict, rule: str) -> None:
+    if rule not in audit["passed_rules"]:
+        audit["passed_rules"].append(rule)
+
+
+def _fail(audit: dict, rule: str) -> None:
+    if rule not in audit["failed_rules"]:
+        audit["failed_rules"].append(rule)
+    if rule not in audit["filter_reasons"]:
+        audit["filter_reasons"].append(rule)
+
+
+def _safety_thresholds(mode: str) -> dict:
+    normalized = (mode or "normal").strip().lower()
+    if normalized == "conservative":
+        return {
+            "mode": "conservative",
+            "min_probability": 0.58,
+            "min_ev": 0.06,
+            "min_data_quality": 70.0,
+            "min_sample": 30,
+            "allowed_risk": {"low", "medium"},
+        }
+    if normalized == "aggressive":
+        return {
+            "mode": "aggressive",
+            "min_probability": 0.45,
+            "min_ev": 0.015,
+            "min_data_quality": 40.0,
+            "min_sample": 12,
+            "allowed_risk": {"low", "medium", "high"},
+        }
+    settings = get_settings()
+    return {
+        "mode": "normal",
+        "min_probability": settings.min_publish_probability,
+        "min_ev": settings.min_publish_ev,
+        "min_data_quality": settings.min_publish_data_quality,
+        "min_sample": 20,
+        "allowed_risk": {"low", "medium"},
     }

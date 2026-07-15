@@ -91,6 +91,17 @@ export type TipstrrMarketPick = {
   risk_level: string
   decision: string
   reason: string
+  passed_rules: string[]
+  failed_rules: string[]
+  filter_reasons: string[]
+  odds_quality_score: number
+  price_age_minutes?: number | null
+  publish_blocked_by_config: boolean
+  publish_blocked_by_risk: boolean
+  publish_blocked_by_data_quality: boolean
+  publish_blocked_by_ev: boolean
+  publish_blocked_by_odds: boolean
+  safety_mode: string
 }
 
 export type PredictionExportDiagnostics = {
@@ -294,6 +305,19 @@ export type Readiness = {
   checks: ReadinessCheck[]
   actions: string[]
   metrics: Record<string, number>
+}
+
+export type PickSafetyMode = {
+  mode: 'conservative' | 'normal' | 'aggressive'
+  available_modes: string[]
+  description: Record<string, string>
+}
+
+export type SystemAlert = {
+  level: 'ok' | 'info' | 'warning' | 'critical'
+  title: string
+  message: string
+  action: string
 }
 
 export type MarketRanking = {

@@ -61,6 +61,7 @@ from app.schemas.schemas import (
 from app.services.collection_service import collect_deep_data_for_date, collect_match_deep_data, collect_mock_data, collect_schedule_data, collect_schedule_range
 from app.services.goal_market_engine import evaluate_match_markets
 from app.services.prediction_service import generate_predictions
+from app.services.runtime_config import get_pick_safety_mode, set_pick_safety_mode
 from app.services.settlement_service import verify_results
 from app.services.statistics_service import (
     overview,
@@ -90,6 +91,55 @@ def provider_status(match_date: date | None = Query(default=None, alias="date"))
     if hasattr(provider, "diagnostics"):
         return provider.diagnostics(match_date or date.today())
     return {"provider": provider.__class__.__name__, "ok": True}
+
+
+@router.get("/pick-safety-mode")
+def pick_safety_mode() -> dict:
+    return {
+        "mode": get_pick_safety_mode(),
+        "available_modes": ["conservative", "normal", "aggressive"],
+        "description": {
+            "conservative": "Menos picks, exige mas EV, mas datos y riesgo bajo/medio.",
+            "normal": "Equilibrio entre valor, calidad de datos y volumen.",
+            "aggressive": "Permite mas candidatos con EV menor y mas riesgo.",
+        },
+    }
+
+
+@router.get("/system-alerts")
+def system_alerts(db: Session = Depends(get_db)) -> list[dict]:
+    init_db()
+    settings = get_settings()
+    now = utc_now_naive()
+    alerts: list[dict] = []
+    latest_job = db.scalar(select(SyncJob).order_by(SyncJob.created_at.desc()).limit(1))
+    recent_errors = int(
+        db.scalar(select(func.count(SyncError.id)).where(SyncError.created_at >= now - timedelta(hours=24))) or 0
+    )
+    future_matches = queries.list_matches_range(db, date.today(), date.today() + timedelta(days=7), limit=5000)
+    future_match_ids = [match.id for match in future_matches if match.kickoff_at > now]
+    availability = queries.data_availability_by_match(db, future_match_ids)
+    future_with_odds = sum(1 for item in availability.values() if item.get("odds"))
+    future_with_stats = _count_matches_with_prematch_data(db, future_match_ids)
+
+    def add(level: str, title: str, message: str, action: str) -> None:
+        alerts.append({"level": level, "title": title, "message": message, "action": action})
+
+    if not (settings.api_football_key or settings.football_api_key or settings.rapidapi_key):
+        add("critical", "APIs sin credenciales", "No hay credenciales reales configuradas para descargar datos.", "Configurar variables de entorno en Railway.")
+    if latest_job is None:
+        add("warning", "Sin sincronizaciones", "Todavia no hay jobs de sincronizacion registrados.", "Ejecutar sincronizar fecha o mantenimiento.")
+    elif latest_job.created_at < now - timedelta(hours=12):
+        add("warning", "Sincronizacion antigua", "La ultima sincronizacion tiene mas de 12 horas.", "Ejecutar mantenimiento completo antes de revisar picks.")
+    if recent_errors:
+        add("warning", "Errores recientes", f"Hay {recent_errors} errores de proveedor en las ultimas 24 horas.", "Revisar errores en Administracion.")
+    if future_match_ids and future_with_odds == 0:
+        add("warning", "Faltan cuotas futuras", "Hay partidos futuros, pero ninguno tiene cuotas guardadas.", "Sincronizar cuotas o revisar proveedor.")
+    if future_match_ids and future_with_stats == 0:
+        add("info", "Faltan datos prepartido", "Hay partidos futuros sin estadisticas/historicos suficientes.", "Ejecutar enriquecimiento de fecha.")
+    if not alerts:
+        add("ok", "Sistema estable", "No se detectan bloqueos operativos principales.", "Continuar monitorizando calendario, cuotas y predicciones.")
+    return alerts
 
 
 @router.get("/matches", response_model=list[MatchListRead])
@@ -937,6 +987,15 @@ def admin_sync_match_deep(match_id: int, db: Session = Depends(get_db)):
 @router.post("/admin/generate-predictions", dependencies=[Depends(require_admin)])
 def admin_generate_predictions(db: Session = Depends(get_db)):
     return generate_predictions(db)
+
+
+@router.post("/admin/pick-safety-mode", dependencies=[Depends(require_admin)])
+def admin_pick_safety_mode(mode: str = Query(...)):
+    try:
+        selected = set_pick_safety_mode(mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "mode": selected}
 
 
 @router.post("/admin/rank-markets", dependencies=[Depends(require_admin)])

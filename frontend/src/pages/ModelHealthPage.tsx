@@ -1,10 +1,11 @@
 import { Activity, AlertTriangle, CheckCircle2, Database, ShieldAlert } from 'lucide-react'
 import type React from 'react'
-import { useModelHealth, useReadiness } from '../hooks/queries'
+import { useModelHealth, useReadiness, useSystemAlerts } from '../hooks/queries'
 
 export function ModelHealthPage() {
   const { data, isLoading } = useModelHealth()
   const { data: readiness } = useReadiness()
+  const { data: alerts = [] } = useSystemAlerts()
   if (isLoading || !data) return <div className="card p-6">Cargando estado del modelo...</div>
   const statusClass = data.status === 'operativo' ? 'bg-emerald-100 text-emerald-800' : data.status === 'degradado' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
   const readinessClass = readiness?.status === 'ready' ? 'bg-emerald-100 text-emerald-800' : readiness?.status === 'degraded' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
@@ -80,6 +81,19 @@ export function ModelHealthPage() {
           ) : null}
         </section>
       ) : null}
+
+      <section className="card p-5">
+        <h3 className="text-xl font-black">Alertas del sistema</h3>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {alerts.map((alert) => (
+            <div key={`${alert.level}-${alert.title}`} className={`rounded-2xl border p-4 ${alert.level === 'critical' ? 'border-rose-200 bg-rose-50' : alert.level === 'warning' ? 'border-amber-200 bg-amber-50' : alert.level === 'ok' ? 'border-emerald-200 bg-emerald-50' : 'border-cyan-200 bg-cyan-50'}`}>
+              <div className="text-sm font-black text-slate-950">{alert.title}</div>
+              <div className="mt-1 text-sm font-semibold text-slate-600">{alert.message}</div>
+              <div className="mt-2 text-xs font-black uppercase text-slate-700">{alert.action}</div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="grid gap-3 md:grid-cols-5">
         {kpis.map(([label, value]) => (
