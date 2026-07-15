@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 import httpx
@@ -350,8 +350,11 @@ def _parse_datetime(item: dict[str, Any], match_date: date) -> datetime:
                 value = int(raw)
                 if value > 10_000_000_000:
                     value = int(value / 1000)
-                return datetime.fromtimestamp(value)
-            return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).replace(tzinfo=None)
+                return datetime.fromtimestamp(value, tz=timezone.utc).replace(tzinfo=None)
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed
         except ValueError:
             pass
     return datetime.combine(match_date, datetime.min.time())

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     flashscore_matches_path: str | None = Field(default=None, alias="FLASHSCORE_MATCHES_PATH")
     flashscore_odds_path: str | None = Field(default=None, alias="FLASHSCORE_ODDS_PATH")
     flashscore_team_history_path: str | None = Field(default=None, alias="FLASHSCORE_TEAM_HISTORY_PATH")
-    data_provider: str = Field(default="mock", alias="DATA_PROVIDER")
+    data_provider: str = Field(default="api_football", alias="DATA_PROVIDER")
     environment: str = Field(default="development", alias="ENVIRONMENT")
     frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
     backend_url: str = Field(default="http://localhost:8000", alias="BACKEND_URL")

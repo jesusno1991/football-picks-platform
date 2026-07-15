@@ -45,6 +45,7 @@ class TipstrrMarketPick:
     market_odds: float | None
     bookmaker: str | None
     odds_collected_at: datetime | None
+    odds_validation_status: str | None
     expected_value: float | None
     merlin_score: float
     data_quality: float
@@ -207,6 +208,7 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odd
         market_odds=odd.odds if odd else None,
         bookmaker=odd.bookmaker if odd else None,
         odds_collected_at=odd.collected_at if odd else None,
+        odds_validation_status=odd.validation_status if odd else None,
         expected_value=expected_value,
         merlin_score=merlin,
         data_quality=lambdas.data_quality,
@@ -229,6 +231,8 @@ def _decision_for_market(
         return "DESCARTADO", "Mercado no soportado por el motor"
     if not odd:
         return "SIN_CUOTA", "Modelo disponible, falta cuota real del proveedor"
+    if not _is_valid_real_odd(odd, datetime.utcnow(), timedelta(hours=get_settings().export_max_odds_age_hours)):
+        return "WATCH", "Cuota no verificada o desactualizada"
     if match.kickoff_at <= datetime.utcnow():
         return "WATCH", "Partido ya iniciado o cerrado"
     if odd.odds < 1.25 or odd.odds > 8:
@@ -313,9 +317,23 @@ def _match_export_block_reason(match: Match, match_date: date, now: datetime, ti
 def _has_recent_odds(row: TipstrrMarketPick, now: datetime, max_age: timedelta) -> bool:
     if row.market_odds is None or row.odds_collected_at is None:
         return False
+    if (row.odds_validation_status or "").lower() not in {"mapped", "verified", "valid"}:
+        return False
     if row.odds_collected_at > now + timedelta(minutes=5):
         return False
     return now - row.odds_collected_at <= max_age
+
+
+def _is_valid_real_odd(odd: Odds, now: datetime, max_age: timedelta) -> bool:
+    if odd.odds <= 1:
+        return False
+    if (odd.validation_status or "").lower() not in {"mapped", "verified", "valid"}:
+        return False
+    if not odd.collected_at:
+        return False
+    if odd.collected_at > now + timedelta(minutes=5):
+        return False
+    return now - odd.collected_at <= max_age
 
 
 def _add_reason(diagnostics: dict, reason: str) -> None:
@@ -345,6 +363,7 @@ def _row_to_export(row: TipstrrMarketPick) -> dict:
         "market_odds": row.market_odds,
         "bookmaker": row.bookmaker,
         "odds_collected_at": row.odds_collected_at.isoformat() if row.odds_collected_at else None,
+        "odds_validation_status": row.odds_validation_status,
         "expected_value": row.expected_value,
         "merlin_score": row.merlin_score,
         "data_quality": row.data_quality,

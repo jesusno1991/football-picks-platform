@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 import httpx
@@ -169,7 +169,10 @@ def _team_from_api(item: dict[str, Any]) -> dict[str, Any]:
 def _parse_fixture_datetime(raw: Any, fallback_date: date) -> datetime:
     if raw:
         try:
-            return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).replace(tzinfo=None)
+            value = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if value.tzinfo is not None:
+                return value.astimezone(timezone.utc).replace(tzinfo=None)
+            return value
         except ValueError:
             pass
     return datetime.combine(fallback_date, datetime.min.time())

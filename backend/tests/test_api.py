@@ -1,6 +1,7 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from app.models import Competition, Match, Prediction, PredictionSystem, Team
+from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team
+from app.core.config import get_settings
 from app.services.collection_service import collect_mock_data
 from app.services.prediction_service import generate_predictions
 
@@ -24,6 +25,41 @@ def test_collect_and_list_matches(client):
     matches = client.get(f"/api/matches?date={date.today().isoformat()}").json()
     assert len(matches) == 2
     assert matches[0]["home_team"]["name"]
+
+
+def test_admin_collect_uses_real_provider_when_not_mock(client, monkeypatch):
+    monkeypatch.setenv("DATA_PROVIDER", "api_football")
+    monkeypatch.setenv("API_FOOTBALL_KEY", "test-key")
+    get_settings.cache_clear()
+
+    def fake_collect_schedule(db, match_date=None):
+        return {"provider": "real", "matches": 0}
+
+    def forbidden_mock(db, match_date=None):
+        raise AssertionError("mock collector must not run for real provider")
+
+    monkeypatch.setattr("app.api.routes.collect_schedule_data", fake_collect_schedule)
+    monkeypatch.setattr("app.api.routes.collect_mock_data", forbidden_mock)
+    response = client.post("/api/admin/collect", headers={"X-Admin-Token": "test-secret"})
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "real"
+    get_settings.cache_clear()
+
+
+def test_model_health_reports_provider_configuration_error(client, monkeypatch):
+    monkeypatch.setenv("DATA_PROVIDER", "api_football")
+    monkeypatch.delenv("API_FOOTBALL_KEY", raising=False)
+    monkeypatch.delenv("FOOTBALL_API_KEY", raising=False)
+    get_settings.cache_clear()
+
+    response = client.get("/api/model-health")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "Proveedor mal configurado" in data["data_status"]
+    get_settings.cache_clear()
 
 
 def test_matches_date_uses_madrid_timezone(client, db):
@@ -76,6 +112,42 @@ def test_matches_range_and_calendar_month(client, db):
     assert calendar_rows[0]["date"] == "2026-08-01"
     assert calendar_rows[0]["match_count"] == 1
     assert "publishable_pick_count" in calendar_rows[0]
+
+
+def test_match_list_marks_only_recent_valid_odds_as_available(client, db):
+    competition, home, away = _seed_calendar_entities(db)
+    match = Match(
+        external_id="stale-odds-match",
+        competition_id=competition.id,
+        home_team_id=home.id,
+        away_team_id=away.id,
+        kickoff_at=datetime.utcnow() + timedelta(days=1),
+        status="scheduled",
+        venue=None,
+        round=None,
+        season="2026",
+    )
+    db.add(match)
+    db.flush()
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="OldBook",
+            market="goals",
+            selection="over",
+            line=3.0,
+            odds=2.0,
+            provider="test",
+            validation_status="mapped",
+            collected_at=datetime.utcnow() - timedelta(hours=30),
+        )
+    )
+    db.commit()
+
+    rows = client.get("/api/matches", params={"date": match.kickoff_at.date().isoformat()}).json()
+    target = next(row for row in rows if row["external_id"] == "stale-odds-match")
+
+    assert target["has_odds"] is False
 
 
 def test_calendar_month_counts_publishable_picks(client, db):
@@ -216,6 +288,16 @@ def test_model_health_endpoint_reports_operational_counts(client):
     assert "matches_without_odds" in data
 
 
+def test_readiness_endpoint_reports_launch_checks(client):
+    response = client.get("/api/readiness")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] in {"ready", "degraded", "blocked"}
+    assert data["checks"]
+    assert "future_matches_7d" in data["metrics"]
+
+
 def test_deep_sync_day_persists_match_odds(client):
     response = client.post(
         "/api/admin/sync-day-deep",
@@ -228,6 +310,19 @@ def test_deep_sync_day_persists_match_odds(client):
     match = client.get(f"/api/matches?date={date.today().isoformat()}").json()[0]
     odds = client.get(f"/api/matches/{match['id']}/odds").json()
     assert odds
+
+
+def test_prediction_export_reports_refresh_error_instead_of_crashing(client, monkeypatch):
+    def broken_refresh(db, match_date):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr("app.api.routes.collect_deep_data_for_date", broken_refresh)
+    response = client.get("/api/predictions/export", params={"date": "2026-07-15", "refresh": "true"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["diagnostics"]["refresh_status"] == "failed_using_cached_data"
+    assert "provider unavailable" in data["diagnostics"]["refresh_error"]
 
 
 def test_admin_maintenance_runs_protected_flow(client):

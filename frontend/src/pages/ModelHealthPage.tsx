@@ -1,11 +1,13 @@
 import { Activity, AlertTriangle, CheckCircle2, Database, ShieldAlert } from 'lucide-react'
 import type React from 'react'
-import { useModelHealth } from '../hooks/queries'
+import { useModelHealth, useReadiness } from '../hooks/queries'
 
 export function ModelHealthPage() {
   const { data, isLoading } = useModelHealth()
+  const { data: readiness } = useReadiness()
   if (isLoading || !data) return <div className="card p-6">Cargando estado del modelo...</div>
   const statusClass = data.status === 'operativo' ? 'bg-emerald-100 text-emerald-800' : data.status === 'degradado' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+  const readinessClass = readiness?.status === 'ready' ? 'bg-emerald-100 text-emerald-800' : readiness?.status === 'degraded' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
   const kpis = [
     ['Partidos descargados', data.matches_downloaded],
     ['Partidos analizados', data.matches_analyzed],
@@ -39,6 +41,45 @@ export function ModelHealthPage() {
         <ProviderCard icon={<CheckCircle2 size={18} />} label="API-Football" value={data.api_football_configured ? 'Conectada' : 'No configurada'} />
         <ProviderCard icon={<CheckCircle2 size={18} />} label="FlashScore" value={data.flashscore_configured ? 'Conectada' : 'No configurada'} />
       </section>
+
+      {readiness ? (
+        <section className="card p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-xl font-black">Preparación para lanzamiento</h3>
+              <p className="text-sm font-semibold text-slate-500">Semáforo real de proveedor, partidos futuros, cuotas, estadísticas y errores.</p>
+            </div>
+            <span className={`inline-flex w-fit rounded-full px-4 py-2 text-sm font-black ${readinessClass}`}>{readiness.status.toUpperCase()}</span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {Object.entries(readiness.metrics).map(([key, value]) => (
+              <div key={key} className="rounded-2xl border border-line bg-slate-50 p-3">
+                <div className="text-xs font-black uppercase text-slate-500">{key.replace(/_/g, ' ')}</div>
+                <div className="mt-1 text-2xl font-black">{value}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {readiness.checks.map((check) => (
+              <div key={check.name} className="flex gap-3 rounded-2xl border border-line bg-white p-3">
+                {check.ok ? <CheckCircle2 className="mt-0.5 text-emerald-600" size={18} /> : <AlertTriangle className="mt-0.5 text-amber-600" size={18} />}
+                <div>
+                  <div className="font-black">{check.name}</div>
+                  <div className="text-sm font-semibold text-slate-500">{check.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {readiness.actions.length ? (
+            <div className="mt-4 rounded-2xl bg-amber-50 p-4">
+              <div className="text-sm font-black text-amber-900">Acciones necesarias antes de lanzar</div>
+              <ul className="mt-2 list-disc pl-5 text-sm font-semibold text-amber-800">
+                {readiness.actions.map((action) => <li key={action}>{action}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="grid gap-3 md:grid-cols-5">
         {kpis.map(([label, value]) => (

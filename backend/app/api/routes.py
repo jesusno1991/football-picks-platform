@@ -1,5 +1,5 @@
 import calendar
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -589,11 +589,23 @@ def get_predictions(
 
 @router.get("/predictions/export")
 def export_predictions(match_date: date = Query(alias="date"), refresh: bool = True, db: Session = Depends(get_db)) -> dict:
+    refresh_error: str | None = None
     if refresh:
-        collect_deep_data_for_date(db, match_date)
+        try:
+            collect_deep_data_for_date(db, match_date)
+        except Exception as exc:
+            refresh_error = str(exc)
+            db.rollback()
     else:
-        _ensure_date_loaded(db, match_date)
-    return build_daily_export(db, match_date)
+        try:
+            _ensure_date_loaded(db, match_date)
+        except Exception as exc:
+            refresh_error = str(exc)
+            db.rollback()
+    payload = build_daily_export(db, match_date)
+    payload["diagnostics"]["refresh_error"] = refresh_error
+    payload["diagnostics"]["refresh_status"] = "failed_using_cached_data" if refresh_error else "ok" if refresh else "not_requested"
+    return payload
 
 
 @router.get("/predictions/{prediction_id}", response_model=PredictionRead)
@@ -731,7 +743,12 @@ def admin_mappings(status: str | None = None, limit: int = Query(default=100, ge
 @router.get("/model-health", response_model=ModelHealthRead)
 def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
     settings = get_settings()
-    provider = get_provider()
+    provider_name = settings.data_provider
+    provider_error: str | None = None
+    try:
+        provider_name = get_provider().__class__.__name__
+    except Exception as exc:
+        provider_error = str(exc)
     latest_job = db.scalar(select(SyncJob).order_by(SyncJob.created_at.desc()).limit(1))
     recent_errors = [
         {
@@ -780,7 +797,10 @@ def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
         for row in usage_rows
         if row.rate_limit_remaining is not None
     ]
-    if recent_errors:
+    if provider_error:
+        status = "error"
+        data_status = f"Proveedor mal configurado: {provider_error}"
+    elif recent_errors:
         status = "degradado"
         data_status = "Datos con errores recientes"
     elif matches_without_odds and matches_downloaded and matches_without_odds / max(matches_downloaded, 1) > 0.75:
@@ -792,7 +812,7 @@ def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
     return ModelHealthRead(
         status=status,
         data_status=data_status,
-        active_provider=provider.__class__.__name__,
+        active_provider=provider_name,
         api_football_configured=bool(settings.api_football_key),
         flashscore_configured=bool(settings.rapidapi_key),
         last_sync_at=latest_job.finished_at if latest_job else None,
@@ -824,11 +844,69 @@ def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
     )
 
 
+@router.get("/readiness")
+def readiness(db: Session = Depends(get_db)) -> dict:
+    settings = get_settings()
+    checks: list[dict] = []
+    actions: list[str] = []
+    provider_error: str | None = None
+    try:
+        provider_name = get_provider().__class__.__name__
+    except Exception as exc:
+        provider_name = settings.data_provider
+        provider_error = str(exc)
+
+    is_mock = settings.data_provider.strip().lower() == "mock"
+    api_configured = bool(settings.api_football_key or settings.football_api_key or settings.rapidapi_key)
+    today = date.today()
+    future_window = queries.list_matches_range(db, today, today + timedelta(days=7), limit=5000)
+    future_match_ids = [match.id for match in future_window if match.kickoff_at > datetime.utcnow()]
+    availability = queries.data_availability_by_match(db, future_match_ids)
+    future_with_odds = sum(1 for item in availability.values() if item.get("odds"))
+    future_with_stats = sum(1 for item in availability.values() if item.get("statistics"))
+    recent_errors = int(db.scalar(select(func.count(SyncError.id))) or 0)
+
+    def add_check(name: str, ok: bool, detail: str, action: str | None = None) -> None:
+        checks.append({"name": name, "ok": ok, "detail": detail})
+        if not ok and action:
+            actions.append(action)
+
+    add_check("Proveedor real", not is_mock, f"Proveedor activo: {settings.data_provider}", "Configurar DATA_PROVIDER=api_football o flashscore.")
+    add_check("Credenciales API", api_configured and not provider_error, provider_error or "Credenciales presentes", "Configurar API_FOOTBALL_KEY o RAPIDAPI_KEY.")
+    add_check("Partidos futuros", len(future_match_ids) > 0, f"{len(future_match_ids)} partidos futuros en 7 dias", "Sincronizar calendario de hoy + 7 dias.")
+    add_check("Cuotas recientes", future_with_odds > 0, f"{future_with_odds} partidos futuros con cuotas recientes", "Sincronizar cuotas y revisar proveedor de odds.")
+    add_check("Estadisticas", future_with_stats > 0, f"{future_with_stats} partidos futuros con estadisticas", "Sincronizar estadisticas/historicos.")
+    add_check("Errores de sync", recent_errors == 0, f"{recent_errors} errores registrados", "Revisar Admin > errores y reintentar tareas fallidas.")
+
+    failed = [check for check in checks if not check["ok"]]
+    if any(check["name"] in {"Proveedor real", "Credenciales API"} for check in failed):
+        status = "blocked"
+    elif failed:
+        status = "degraded"
+    else:
+        status = "ready"
+    return {
+        "status": status,
+        "provider": provider_name,
+        "generated_at": datetime.utcnow().isoformat(),
+        "checks": checks,
+        "actions": actions,
+        "metrics": {
+            "future_matches_7d": len(future_match_ids),
+            "future_matches_with_recent_odds": future_with_odds,
+            "future_matches_with_statistics": future_with_stats,
+            "sync_errors": recent_errors,
+        },
+    }
+
+
 @router.post("/admin/collect", dependencies=[Depends(require_admin)])
 def admin_collect(match_date: date | None = None, db: Session = Depends(get_db)):
     init_db()
     try:
-        return collect_mock_data(db, match_date)
+        if get_settings().data_provider.strip().lower() == "mock":
+            return collect_mock_data(db, match_date)
+        return collect_schedule_data(db, match_date)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

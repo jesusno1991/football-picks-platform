@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["SECRET_KEY"] = "test-secret"
+os.environ["DATA_PROVIDER"] = "mock"
 
 from app.database import Base, SessionLocal, engine, init_db  # noqa: E402
 from app.main import app  # noqa: E402

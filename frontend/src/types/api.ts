@@ -84,6 +84,7 @@ export type TipstrrMarketPick = {
   market_odds?: number | null
   bookmaker?: string | null
   odds_collected_at?: string | null
+  odds_validation_status?: string | null
   expected_value?: number | null
   merlin_score: number
   data_quality: number
@@ -99,6 +100,8 @@ export type PredictionExportDiagnostics = {
   matches_evaluated: number
   discard_reasons: Record<string, number>
   max_odds_age_hours: number
+  refresh_status?: string
+  refresh_error?: string | null
 }
 
 export type PredictionExportResponse = {
@@ -276,6 +279,21 @@ export type ModelHealth = {
   incomplete_competitions: number
   api_usage: Record<string, unknown>[]
   rate_limits: Record<string, unknown>[]
+}
+
+export type ReadinessCheck = {
+  name: string
+  ok: boolean
+  detail: string
+}
+
+export type Readiness = {
+  status: 'ready' | 'degraded' | 'blocked'
+  provider: string
+  generated_at: string
+  checks: ReadinessCheck[]
+  actions: string[]
+  metrics: Record<string, number>
 }
 
 export type MarketRanking = {

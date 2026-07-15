@@ -17,6 +17,7 @@ import {
   fetchPlayers,
   fetchPredictions,
   fetchProfitCurve,
+  fetchReadiness,
   fetchSearch,
   fetchStandings,
   fetchTeamDetail,
@@ -70,6 +71,10 @@ export function useMarketRankings() {
 
 export function useModelHealth() {
   return useQuery({ queryKey: ['model-health'], queryFn: fetchModelHealth })
+}
+
+export function useReadiness() {
+  return useQuery({ queryKey: ['readiness'], queryFn: fetchReadiness })
 }
 
 export function useOverview() {

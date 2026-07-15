@@ -13,6 +13,7 @@ import type {
   Overview,
   Prediction,
   PredictionExportResponse,
+  Readiness,
   SearchResult,
   StandingRow,
   Team,
@@ -131,6 +132,11 @@ export async function fetchAdminStatus() {
 
 export async function fetchModelHealth() {
   const response = await api.get<ModelHealth>('/api/model-health')
+  return response.data
+}
+
+export async function fetchReadiness() {
+  const response = await api.get<Readiness>('/api/readiness')
   return response.data
 }
 

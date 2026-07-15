@@ -152,6 +152,7 @@ class TipstrrMarketPickRead(BaseModel):
     market_odds: float | None = None
     bookmaker: str | None = None
     odds_collected_at: datetime | None = None
+    odds_validation_status: str | None = None
     expected_value: float | None = None
     merlin_score: float
     data_quality: float

@@ -164,7 +164,13 @@ function ExportDiagnostics({ exportData }: { exportData: PredictionExportRespons
         <div>Zona horaria: {exportData.timezone}</div>
         <div>Cuota máxima antigua: {exportData.diagnostics.max_odds_age_hours}h</div>
         <div>Mercados exportados: {exportData.market_evaluations.length}</div>
+        <div>Refresco de datos: {exportData.diagnostics.refresh_status ?? 'ok'}</div>
       </div>
+      {exportData.diagnostics.refresh_error ? (
+        <div className="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-800">
+          Error al refrescar proveedor: {exportData.diagnostics.refresh_error}
+        </div>
+      ) : null}
       {exportData.market_evaluations.length === 0 ? (
         <div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800">
           No hay picks exportables para esta fecha con las reglas actuales.
@@ -282,6 +288,8 @@ function buildChatGptText(prompt: string, exportData: PredictionExportResponse) 
     `Partidos con cuotas recientes: ${exportData.diagnostics.matches_with_recent_odds}`,
     `Partidos evaluados: ${exportData.diagnostics.matches_evaluated}`,
     `Maxima antiguedad de cuota: ${exportData.diagnostics.max_odds_age_hours}h`,
+    `Refresco de datos: ${exportData.diagnostics.refresh_status ?? 'ok'}`,
+    `Error de refresco: ${exportData.diagnostics.refresh_error ?? 'ninguno'}`,
     `Motivos de descarte: ${reasons.length ? reasons.join(', ') : 'ninguno'}`,
     '',
     'PICKS PUBLICABLES',

@@ -64,9 +64,34 @@ def test_api_football_normalizes_matches(monkeypatch):
     matches = provider.get_matches(date(2026, 7, 13))
 
     assert matches[0]["external_id"] == "api-football-123"
+    assert matches[0]["kickoff_at"].isoformat() == "2026-07-13T18:00:00"
     assert matches[0]["competition"]["name"] == "Test League"
     assert matches[0]["home_team"]["external_id"] == "api-football-team-1"
     assert provider.get_competitions()[0]["country"] == "Spain"
+
+
+def test_api_football_converts_timezone_aware_kickoff_to_utc_naive(monkeypatch):
+    def fake_get(url, headers, params, timeout):
+        return FakeResponse(
+            {
+                "errors": [],
+                "response": [
+                    {
+                        "fixture": {"id": 456, "date": "2026-07-15T21:30:00+02:00", "venue": {}},
+                        "league": {"id": 99, "name": "Test League", "country": "Spain", "season": 2026},
+                        "teams": {
+                            "home": {"id": 1, "name": "Home FC"},
+                            "away": {"id": 2, "name": "Away FC"},
+                        },
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("app.collectors.api_football_provider.httpx.get", fake_get)
+    matches = ApiFootballProvider().get_matches(date(2026, 7, 15))
+
+    assert matches[0]["kickoff_at"].isoformat() == "2026-07-15T19:30:00"
 
 
 def test_api_football_builds_team_history(monkeypatch):

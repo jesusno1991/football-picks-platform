@@ -7,10 +7,14 @@ from app.core.config import get_settings
 
 def get_provider() -> FootballDataProvider:
     settings = get_settings()
-    if settings.data_provider in {"api_football", "api-football", "football_api"}:
+    provider = settings.data_provider.strip().lower()
+    if provider in {"api_football", "api-football", "football_api"}:
         return ApiFootballProvider()
-    if settings.data_provider in {"flashscore", "rapidapi_flashscore"}:
+    if provider in {"flashscore", "rapidapi_flashscore"}:
         return FlashScoreRapidApiProvider()
-    if settings.data_provider == "mock":
+    if provider == "mock":
         return MockFootballDataProvider()
-    return MockFootballDataProvider()
+    raise RuntimeError(
+        f"Unsupported DATA_PROVIDER={settings.data_provider!r}. "
+        "Use api_football, flashscore, or mock only in local tests."
+    )

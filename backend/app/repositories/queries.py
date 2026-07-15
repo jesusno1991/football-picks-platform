@@ -1,6 +1,6 @@
 from datetime import date
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import Select, and_, func, not_, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
@@ -371,9 +371,16 @@ def data_availability_by_match(db: Session, match_ids: list[int]) -> dict[int, d
         .group_by(FixtureLineup.match_id)
     ):
         availability[int(match_id)]["lineups"] = int(count) > 0
+    max_age = timedelta(hours=get_settings().export_max_odds_age_hours)
+    min_collected_at = datetime.utcnow() - max_age
     for match_id, count in db.execute(
         select(Odds.match_id, func.count(Odds.id))
-        .where(Odds.match_id.in_(match_ids))
+        .where(
+            Odds.match_id.in_(match_ids),
+            Odds.odds > 1,
+            Odds.validation_status.in_(["mapped", "verified", "valid"]),
+            Odds.collected_at >= min_collected_at,
+        )
         .group_by(Odds.match_id)
     ):
         availability[int(match_id)]["odds"] = int(count) > 0
