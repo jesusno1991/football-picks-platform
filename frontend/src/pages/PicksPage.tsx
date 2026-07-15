@@ -49,32 +49,34 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
           <input className="rounded-lg border border-line px-3 py-2 text-sm font-bold" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </div>
       </div>
-      {!onlyPublishable ? (
-        <div className="card flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-sm font-black text-slate-900">Vista de predicciones</div>
-            <div className="text-xs font-semibold text-slate-500">
-              Puedes ver la tabla normal o descargar todos los picks de la fecha para analizarlos en ChatGPT.
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              className={`rounded-full px-4 py-2 text-sm font-black ${viewMode === 'table' ? 'bg-cyan-500 text-white' : 'border border-line bg-white text-slate-700'}`}
-              onClick={() => setViewMode('table')}
-            >
-              Tabla
-            </button>
-            <button
-              className={`rounded-full px-4 py-2 text-sm font-black ${viewMode === 'export' ? 'bg-cyan-500 text-white' : 'border border-line bg-white text-slate-700'}`}
-              onClick={() => setViewMode('export')}
-            >
-              Exportar para ChatGPT
-            </button>
+      <div className="card flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="text-sm font-black text-slate-900">{onlyPublishable ? 'Herramientas de picks' : 'Vista de predicciones'}</div>
+          <div className="text-xs font-semibold text-slate-500">
+            {onlyPublishable
+              ? 'Descarga los picks publicables y el diagnóstico de candidatos para revisarlo en ChatGPT.'
+              : 'Puedes ver la tabla normal o descargar todos los picks de la fecha para analizarlos en ChatGPT.'}
           </div>
         </div>
-      ) : null}
+        <div className="flex flex-wrap gap-2">
+          <button
+            className={`rounded-full px-4 py-2 text-sm font-black ${viewMode === 'table' ? 'bg-cyan-500 text-white' : 'border border-line bg-white text-slate-700'}`}
+            onClick={() => setViewMode('table')}
+          >
+            Tabla
+          </button>
+          <button
+            className={`rounded-full px-4 py-2 text-sm font-black ${viewMode === 'export' ? 'bg-cyan-500 text-white' : 'border border-line bg-white text-slate-700'}`}
+            onClick={() => setViewMode('export')}
+          >
+            Exportar para ChatGPT
+          </button>
+        </div>
+      </div>
       {isLoading ? <div className="card p-4 font-bold text-slate-600">Cargando datos reales de la fecha...</div> : null}
-      {!isLoading && loadError ? (
+      {viewMode === 'export' ? (
+        <ChatGptExportPanel date={date} enabled={viewMode === 'export'} onlyPublicable={onlyPublishable} />
+      ) : !isLoading && loadError ? (
         <div className="card p-5 text-sm font-semibold text-rose-700">
           No se puede conectar con la API. En local abre tambien el backend en el puerto 8000 o usa la web de Railway.
         </div>
@@ -86,8 +88,6 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
         </div>
       ) : onlyPublishable ? (
         <MarketPickTable picks={publicablePicks} />
-      ) : viewMode === 'export' ? (
-        <ChatGptExportPanel date={date} enabled={viewMode === 'export'} />
       ) : (
         <PredictionTable predictions={predictions} />
       )}
@@ -95,11 +95,11 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
   )
 }
 
-function ChatGptExportPanel({ date, enabled }: { date: string; enabled: boolean }) {
+function ChatGptExportPanel({ date, enabled, onlyPublicable = false }: { date: string; enabled: boolean; onlyPublicable?: boolean }) {
   const { data: exportData, isFetching, refetch } = usePredictionExport(date, enabled)
-  const fileBase = `picks-predicciones-${date}`
+  const fileBase = `${onlyPublicable ? 'picks-publicables' : 'picks-predicciones'}-${date}`
   const prompt = [
-    'Analiza estos picks prepartido como auditor externo.',
+    onlyPublicable ? 'Analiza estos picks prepartido publicables como auditor externo.' : 'Analiza estos picks prepartido como auditor externo.',
     'Prioriza mercados con EV positivo, probabilidad alta, cuota coherente, Merlin Score alto y buen control de riesgo.',
     'Separa picks publicables, picks a vigilar y descartes. No inventes datos que no vengan en el archivo.',
   ].join(' ')
