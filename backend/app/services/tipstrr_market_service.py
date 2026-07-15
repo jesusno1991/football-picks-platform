@@ -369,7 +369,9 @@ def _display_expected_value(match: Match, audit: dict, raw_expected_value: float
         return None
     if match.kickoff_at <= utc_now_naive():
         return None
-    if audit["publish_blocked_by_odds"]:
+    if audit["publish_blocked_by_odds"] or audit["publish_blocked_by_config"]:
+        return None
+    if audit["publish_blocked_by_data_quality"] or audit["publish_blocked_by_risk"]:
         return None
     return raw_expected_value
 

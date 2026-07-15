@@ -150,6 +150,7 @@ def test_extreme_goal_under_line_is_not_publicable(db):
     publicable = list_tipstrr_market_picks(db, match.kickoff_at.date(), "PUBLICABLE")
 
     assert row.decision == "WATCH"
+    assert row.expected_value is None
     assert row.publish_blocked_by_config is True
     assert "Linea fuera de rango profesional para publicacion" in row.failed_rules
     assert all(not (item.family == "total_goals" and item.selection == "under" and item.line == 9.5) for item in publicable)
@@ -364,6 +365,22 @@ def test_started_match_does_not_show_ev_or_rank_above_future_watch(db):
     assert started_row.expected_value is None
     assert "Partido ya iniciado o cerrado" in started_row.failed_rules
     assert rows.index(future_row) < rows.index(started_row)
+
+
+def test_low_data_quality_watch_does_not_show_ev_as_opportunity(db):
+    kickoff = utc_now_naive() + timedelta(hours=4)
+    match = _create_match_with_forms_at(db, kickoff, "match-low-quality-ranking")
+    for form in db.query(TeamForm).all():
+        if form.competition_id == match.competition_id:
+            form.matches_sample = 2
+    _add_publicable_odd(db, match, utc_now_naive())
+
+    rows = list_tipstrr_market_picks(db, kickoff.date())
+    row = next(item for item in rows if item.external_id == "match-low-quality-ranking" and item.family == "total_goals" and item.selection == "over" and item.line == 3.0)
+
+    assert row.decision == "WATCH"
+    assert row.publish_blocked_by_data_quality is True
+    assert row.expected_value is None
 
 
 def _create_match_with_forms(db):
