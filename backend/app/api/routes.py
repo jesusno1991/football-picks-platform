@@ -764,8 +764,9 @@ def model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
     ]
     matches_downloaded = int(db.scalar(select(func.count(Match.id))) or 0)
     matches_analyzed = int(db.scalar(select(func.count(func.distinct(Prediction.match_id)))) or 0)
-    markets_evaluated = int(db.scalar(select(func.count(MarketEvaluation.id))) or 0)
     candidate_picks = int(db.scalar(select(func.count(Prediction.id)).where(Prediction.predicted_probability.is_not(None))) or 0)
+    stored_market_evaluations = int(db.scalar(select(func.count(MarketEvaluation.id))) or 0)
+    markets_evaluated = max(stored_market_evaluations, candidate_picks)
     rejected_picks = int(db.scalar(select(func.count(Prediction.id)).where(Prediction.status.in_(["rejected", "not_published", "no_bet"]))) or 0)
     publishable_picks = int(db.scalar(select(func.count(Prediction.id)).where(Prediction.status.in_(["published", "ready_to_publish", "publishable"]))) or 0)
     matches_without_odds = int(

@@ -379,6 +379,7 @@ def test_model_health_endpoint_reports_operational_counts(client):
     assert data["status"] in {"operativo", "degradado", "error"}
     assert data["matches_downloaded"] >= 1
     assert data["candidate_picks"] >= 1
+    assert data["markets_evaluated"] >= data["candidate_picks"]
     assert "matches_without_odds" in data
 
 
@@ -400,6 +401,7 @@ def test_deep_sync_day_persists_match_odds(client):
     )
 
     assert response.status_code == 200
+    assert response.json()["forms"] >= 2
     assert response.json()["odds"] >= 1
     match = client.get(f"/api/matches?date={date.today().isoformat()}").json()[0]
     odds = client.get(f"/api/matches/{match['id']}/odds").json()

@@ -280,7 +280,7 @@ def collect_schedule_range(db: Session, date_from: date, date_to: date) -> dict[
 def collect_deep_data_for_date(db: Session, match_date: date) -> dict[str, int]:
     collect_schedule_data(db, match_date)
     matches = queries.list_matches(db, match_date, limit=5000)
-    totals = {"matches": 0, "statistics": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
+    totals = {"matches": 0, "statistics": 0, "forms": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
     for match in matches:
         try:
             result = collect_match_deep_data(db, match.id)
@@ -299,7 +299,15 @@ def collect_match_deep_data(db: Session, match_id: int) -> dict[str, int]:
     match = db.get(Match, match_id)
     if not match:
         raise ValueError(f"Match not found: {match_id}")
-    totals = {"matches": 1, "statistics": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
+    totals = {"matches": 1, "statistics": 0, "forms": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
+
+    try:
+        totals["forms"] += _upsert_team_forms_for_match(db, provider, match)
+        _record_api_usage(db, provider_name, "get_team_history", success=True)
+    except Exception:
+        totals["errors"] += 1
+        _record_api_usage(db, provider_name, "get_team_history", success=False)
+        logger.exception("team form sync failed match_id=%s", match.id)
 
     try:
         stats_payload = provider.get_match_statistics(match.external_id)
@@ -381,6 +389,38 @@ def _update_match(match: Match, item: dict, competition: Competition, home: Team
     match.season = item.get("season", match.season)
 
 
+def _upsert_team_forms_for_match(db: Session, provider: object, match: Match) -> int:
+    count = 0
+    reference_date = datetime.combine(match.kickoff_at.date(), datetime.min.time())
+    for team in (match.home_team, match.away_team):
+        if hasattr(provider, "get_team_history_for_match"):
+            history = provider.get_team_history_for_match(match.external_id, team.external_id)
+        else:
+            history = provider.get_team_history(team.external_id)
+        existing = db.scalar(
+            select(TeamForm).where(
+                TeamForm.team_id == team.id,
+                TeamForm.competition_id == match.competition_id,
+                TeamForm.reference_date == reference_date,
+            )
+        )
+        if existing:
+            for key, value in history.items():
+                setattr(existing, key, value)
+            count += 1
+        else:
+            db.add(
+                TeamForm(
+                    team_id=team.id,
+                    competition_id=match.competition_id,
+                    reference_date=reference_date,
+                    **history,
+                )
+            )
+            count += 1
+    return count
+
+
 def _upsert_match_statistics(db: Session, match: Match, payload: list[dict]) -> int:
     count = 0
     for index, row in enumerate(payload):
@@ -423,6 +463,7 @@ def _upsert_odds(db: Session, match: Match, payload: list[dict]) -> int:
             existing.odds = odd["odds"]
             existing.collected_at = utc_now_naive()
             existing.validation_status = odd.get("validation_status", existing.validation_status)
+            count += 1
         else:
             db.add(Odds(match_id=match.id, **odd))
             count += 1
