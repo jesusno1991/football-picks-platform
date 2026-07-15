@@ -317,8 +317,9 @@ def _best_odd(odds_rows: list[Odds], spec: MarketSpec) -> Odds | None:
     if not candidates:
         return None
     professional = [odd for odd in candidates if _odds_in_professional_range(odd.odds)]
-    pool = professional or candidates
-    return max(pool, key=lambda odd: odd.odds)
+    if not professional:
+        return None
+    return max(professional, key=lambda odd: odd.odds)
 
 
 def _odd_matches_spec(odd: Odds, spec: MarketSpec) -> bool:

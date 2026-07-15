@@ -6,6 +6,7 @@ from app.repositories.queries import get_prediction_system
 from app.services.prediction_service import _select_best_market_for_match
 from app.services.tipstrr_market_service import build_daily_export, list_tipstrr_market_picks
 from app.services.tipstrr_market_service import build_tipstrr_predictions
+from app.utils.dates import local_date_from_utc_naive
 from app.utils.time import utc_now_naive
 
 
@@ -351,14 +352,42 @@ def test_tipstrr_prefers_professional_odd_over_outlier(db):
     assert row.bookmaker == "Book 2.05"
 
 
+def test_tipstrr_ignores_outlier_odd_when_no_professional_price_exists(db):
+    match = _create_match_with_forms(db)
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Outlier Book",
+            market="handicap",
+            market_family="asian_handicap",
+            period="full_time",
+            team_scope="away",
+            selection="handicap",
+            line=2.0,
+            odds=45.0,
+            provider="test",
+            validation_status="mapped",
+        )
+    )
+    db.commit()
+
+    rows = list_tipstrr_market_picks(db, match.kickoff_at.date())
+    row = next(item for item in rows if item.family == "asian_handicap" and item.team_scope == "away" and item.line == 2.0)
+
+    assert row.market_odds is None
+    assert row.expected_value is None
+    assert row.decision == "SIN_CUOTA"
+    assert "Falta cuota real del proveedor" in row.failed_rules
+
+
 def test_started_match_does_not_show_ev_or_rank_above_future_watch(db):
     now = utc_now_naive()
-    started = _create_match_with_forms_at(db, now - timedelta(hours=2), "match-started-ranking")
-    future = _create_match_with_forms_at(db, now + timedelta(hours=4), "match-future-ranking")
+    started = _create_match_with_forms_at(db, now - timedelta(minutes=30), "match-started-ranking")
+    future = _create_match_with_forms_at(db, now + timedelta(minutes=30), "match-future-ranking")
     _add_publicable_odd(db, started, now)
     _add_publicable_odd(db, future, now)
 
-    rows = list_tipstrr_market_picks(db, now.date())
+    rows = list_tipstrr_market_picks(db, local_date_from_utc_naive(now, "Europe/Madrid"))
     started_row = next(item for item in rows if item.external_id == "match-started-ranking" and item.family == "total_goals" and item.selection == "over" and item.line == 3.0)
     future_row = next(item for item in rows if item.external_id == "match-future-ranking" and item.family == "total_goals" and item.selection == "over" and item.line == 3.0)
 
@@ -375,7 +404,7 @@ def test_low_data_quality_watch_does_not_show_ev_as_opportunity(db):
             form.matches_sample = 2
     _add_publicable_odd(db, match, utc_now_naive())
 
-    rows = list_tipstrr_market_picks(db, kickoff.date())
+    rows = list_tipstrr_market_picks(db, local_date_from_utc_naive(kickoff, "Europe/Madrid"))
     row = next(item for item in rows if item.external_id == "match-low-quality-ranking" and item.family == "total_goals" and item.selection == "over" and item.line == 3.0)
 
     assert row.decision == "WATCH"

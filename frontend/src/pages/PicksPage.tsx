@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { PredictionTable } from '../components/PredictionTable'
-import { usePredictionExport, usePredictions, useTipstrrMarketPicks } from '../hooks/queries'
+import { usePredictionExport, useTipstrrMarketPicks } from '../hooks/queries'
 import type { PredictionExportResponse, TipstrrMarketPick } from '../types/api'
 import { formatDateInput, formatDecimal, formatPercent } from '../utils/format'
 
@@ -13,12 +12,11 @@ function dateFromUrl() {
 export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boolean }) {
   const [date, setDateState] = useState(dateFromUrl)
   const [viewMode, setViewMode] = useState<'table' | 'export'>('table')
-  const { data: predictions = [], isLoading: predictionsLoading, error: predictionsError } = usePredictions(undefined, date)
   const { data: publicablePicks = [], isLoading: picksLoading, error: picksError } = useTipstrrMarketPicks(date, 'PUBLICABLE', 1000)
-  const { data: allMarketRows = [], error: marketRowsError } = useTipstrrMarketPicks(date, undefined, 1000)
-  const isLoading = onlyPublishable ? picksLoading : predictionsLoading
-  const data = onlyPublishable ? publicablePicks : predictions
-  const loadError = onlyPublishable ? picksError || marketRowsError : predictionsError
+  const { data: allMarketRows = [], isLoading: marketRowsLoading, error: marketRowsError } = useTipstrrMarketPicks(date, undefined, 1000)
+  const tableRows = onlyPublishable ? publicablePicks : allMarketRows
+  const isLoading = onlyPublishable ? picksLoading : marketRowsLoading
+  const loadError = onlyPublishable ? picksError || marketRowsError : marketRowsError
 
   const setDate = (nextDate: string) => {
     setDateState(nextDate)
@@ -80,16 +78,14 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
         <div className="card p-5 text-sm font-semibold text-rose-700">
           No se puede conectar con la API. En local abre tambien el backend en el puerto 8000 o usa la web de Railway.
         </div>
-      ) : !isLoading && data.length === 0 ? (
+      ) : !isLoading && tableRows.length === 0 ? (
         <div className="card p-5 text-sm font-semibold text-slate-600">
           {onlyPublishable
             ? `No hay picks publicables en esta fecha. Candidatos analizados visibles: ${allMarketRows.length}.`
             : 'No hay predicciones generadas para esta fecha.'}
         </div>
-      ) : onlyPublishable ? (
-        <MarketPickTable picks={publicablePicks} />
       ) : (
-        <PredictionTable predictions={predictions} />
+        <MarketPickTable picks={tableRows} />
       )}
     </div>
   )
