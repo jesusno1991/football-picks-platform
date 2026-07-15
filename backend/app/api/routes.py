@@ -439,7 +439,7 @@ def get_live_picks(
 def get_live_match_center(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)) -> list[dict]:
     _ensure_date_loaded(db, date.today())
     collect_flashscore_live_data(db, limit=min(limit, 50))
-    live_matches = queries.list_matches_by_statuses(db, _live_statuses(), limit=limit)
+    live_matches = queries.list_matches_by_statuses(db, _live_statuses(), limit=max(200, limit * 5))
     all_live_pick_rows = [_live_pick_row(row) for row in list_tipstrr_market_picks(db, date.today(), None)]
     rows = []
     for match in live_matches:
@@ -456,7 +456,7 @@ def get_live_match_center(limit: int = Query(default=100, ge=1, le=500), db: Ses
         ),
         reverse=True,
     )
-    return rows
+    return rows[:limit]
 
 
 @router.get("/market-rankings", response_model=list[MarketRankingRead])
