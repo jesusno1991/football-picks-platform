@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models import Match, Odds, Prediction
 from app.repositories import queries
 from app.services.goal_market_engine import (
@@ -19,6 +20,7 @@ from app.services.goal_market_engine import (
 )
 from app.services.market_catalog import MarketSpec, base_market_catalog, merge_market_specs, supported_market_specs_from_odds
 from app.services.settlement_engine import fair_odds_from_distribution
+from app.utils.dates import local_date_from_utc_naive
 
 
 @dataclass
@@ -29,6 +31,8 @@ class TipstrrMarketPick:
     competition_name: str
     country: str
     kickoff_at: datetime
+    kickoff_local_date: str
+    match_status: str
     group: str
     family: str
     period: str
@@ -40,6 +44,7 @@ class TipstrrMarketPick:
     fair_odds: float | None
     market_odds: float | None
     bookmaker: str | None
+    odds_collected_at: datetime | None
     expected_value: float | None
     merlin_score: float
     data_quality: float
@@ -65,6 +70,48 @@ def list_tipstrr_market_picks(db: Session, match_date: date, decision: str | Non
             row.kickoff_at,
         ),
     )
+
+
+def build_daily_export(db: Session, match_date: date, now: datetime | None = None) -> dict:
+    settings = get_settings()
+    now = now or datetime.utcnow()
+    max_odds_age = timedelta(hours=settings.export_max_odds_age_hours)
+    matches = queries.list_matches(db, match_date, limit=5000)
+    diagnostics = {
+        "matches_found": len(matches),
+        "future_matches": 0,
+        "matches_with_recent_odds": 0,
+        "matches_evaluated": 0,
+        "discard_reasons": {},
+        "max_odds_age_hours": settings.export_max_odds_age_hours,
+    }
+    rows: list[TipstrrMarketPick] = []
+    for match in matches:
+        reason = _match_export_block_reason(match, match_date, now, settings.app_timezone)
+        if reason:
+            _add_reason(diagnostics, reason)
+            continue
+        diagnostics["future_matches"] += 1
+        match_rows = _rows_for_match(db, match)
+        recent_rows = [row for row in match_rows if _has_recent_odds(row, now, max_odds_age)]
+        if not recent_rows:
+            _add_reason(diagnostics, "no_recent_odds")
+            continue
+        diagnostics["matches_with_recent_odds"] += 1
+        diagnostics["matches_evaluated"] += 1
+        rows.extend(recent_rows)
+
+    rows = _sort_export_rows(rows)
+    publicable = [row for row in rows if row.decision == "PUBLICABLE"]
+    return {
+        "export_type": "future_pre_match_picks_for_chatgpt",
+        "date": match_date.isoformat(),
+        "generated_at": now.isoformat(),
+        "timezone": settings.app_timezone,
+        "diagnostics": diagnostics,
+        "publicable_picks": [_row_to_export(row) for row in publicable],
+        "market_evaluations": [_row_to_export(row) for row in rows],
+    }
 
 
 def _normalize_decision_filter(decision: str) -> str:
@@ -146,6 +193,8 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odd
         competition_name=match.competition.name,
         country=match.competition.country,
         kickoff_at=match.kickoff_at,
+        kickoff_local_date=local_date_from_utc_naive(match.kickoff_at, get_settings().app_timezone).isoformat(),
+        match_status=match.status,
         group=spec.group,
         family=spec.family,
         period=spec.period,
@@ -157,6 +206,7 @@ def _row_for_spec(match: Match, lambdas: GoalLambdas, spec: MarketSpec, odd: Odd
         fair_odds=fair_odds,
         market_odds=odd.odds if odd else None,
         bookmaker=odd.bookmaker if odd else None,
+        odds_collected_at=odd.collected_at if odd else None,
         expected_value=expected_value,
         merlin_score=merlin,
         data_quality=lambdas.data_quality,
@@ -234,3 +284,71 @@ def has_matches_for_date(db: Session, match_date: date) -> bool:
     start = datetime.combine(match_date, time.min)
     end = datetime.combine(match_date, time.max)
     return db.scalar(select(Match.id).where(Match.kickoff_at.between(start, end)).limit(1)) is not None
+
+
+def _sort_export_rows(rows: list[TipstrrMarketPick]) -> list[TipstrrMarketPick]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            0 if row.decision == "PUBLICABLE" else 1 if row.decision == "WATCH" else 2,
+            row.kickoff_at,
+            -(row.expected_value if row.expected_value is not None else -999),
+            -row.merlin_score,
+        ),
+    )
+
+
+def _match_export_block_reason(match: Match, match_date: date, now: datetime, timezone_name: str) -> str | None:
+    if local_date_from_utc_naive(match.kickoff_at, timezone_name) != match_date:
+        return "local_date_mismatch"
+    if match.kickoff_at <= now:
+        return "already_started_or_closed"
+    normalized_status = (match.status or "").strip().lower().replace("-", "_")
+    allowed = {"scheduled", "not_started", "not started", "ns", "tbd"}
+    if normalized_status not in allowed:
+        return f"invalid_status:{match.status or 'unknown'}"
+    return None
+
+
+def _has_recent_odds(row: TipstrrMarketPick, now: datetime, max_age: timedelta) -> bool:
+    if row.market_odds is None or row.odds_collected_at is None:
+        return False
+    if row.odds_collected_at > now + timedelta(minutes=5):
+        return False
+    return now - row.odds_collected_at <= max_age
+
+
+def _add_reason(diagnostics: dict, reason: str) -> None:
+    reasons = diagnostics["discard_reasons"]
+    reasons[reason] = int(reasons.get(reason, 0)) + 1
+
+
+def _row_to_export(row: TipstrrMarketPick) -> dict:
+    return {
+        "match_id": row.match_id,
+        "external_id": row.external_id,
+        "match_name": row.match_name,
+        "kickoff_at": row.kickoff_at.isoformat(),
+        "kickoff_local_date": row.kickoff_local_date,
+        "match_status": row.match_status,
+        "country": row.country,
+        "competition": row.competition_name,
+        "group": row.group,
+        "market_family": row.family,
+        "market_label": row.label,
+        "period": row.period,
+        "team_scope": row.team_scope,
+        "selection": row.selection,
+        "line": row.line,
+        "model_probability": row.model_probability,
+        "fair_odds": row.fair_odds,
+        "market_odds": row.market_odds,
+        "bookmaker": row.bookmaker,
+        "odds_collected_at": row.odds_collected_at.isoformat() if row.odds_collected_at else None,
+        "expected_value": row.expected_value,
+        "merlin_score": row.merlin_score,
+        "data_quality": row.data_quality,
+        "risk_level": row.risk_level,
+        "decision": row.decision,
+        "reason": row.reason,
+    }

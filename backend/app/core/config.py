@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     backend_url: str = Field(default="http://localhost:8000", alias="BACKEND_URL")
     app_timezone: str = Field(default="Europe/Madrid", alias="APP_TIMEZONE")
     rate_limit_requests_per_minute: int = Field(default=240, alias="RATE_LIMIT_REQUESTS_PER_MINUTE")
+    export_max_odds_age_hours: int = Field(default=24, alias="EXPORT_MAX_ODDS_AGE_HOURS")
 
     admin_token_header: str = "X-Admin-Token"
     minimum_minutes_before_kickoff: int = 15

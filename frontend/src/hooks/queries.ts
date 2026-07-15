@@ -12,6 +12,7 @@ import {
   fetchMarketRankings,
   fetchModelHealth,
   fetchMatches,
+  fetchPredictionExport,
   fetchOverview,
   fetchPlayers,
   fetchPredictions,
@@ -50,6 +51,10 @@ export function useMatchOdds(id?: number) {
 
 export function usePredictions(status?: string, date?: string) {
   return useQuery({ queryKey: ['predictions', status ?? 'all', date ?? 'all'], queryFn: () => fetchPredictions(status, date) })
+}
+
+export function usePredictionExport(date: string, enabled: boolean) {
+  return useQuery({ queryKey: ['prediction-export', date], queryFn: () => fetchPredictionExport(date), enabled })
 }
 
 export function useTipstrrMarketPicks(date: string, decision?: string) {

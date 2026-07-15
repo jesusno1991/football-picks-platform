@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team, TeamForm
 from app.services.collection_service import upsert_prediction_systems
 from app.repositories.queries import get_prediction_system
 from app.services.prediction_service import _select_best_market_for_match
-from app.services.tipstrr_market_service import list_tipstrr_market_picks
+from app.services.tipstrr_market_service import build_daily_export, list_tipstrr_market_picks
 from app.services.tipstrr_market_service import build_tipstrr_predictions
 
 
@@ -172,22 +172,56 @@ def test_generate_predictions_publishes_max_one_market_per_match(client):
     assert len(match_ids) == len(set(match_ids))
 
 
+def test_daily_export_for_july_15_does_not_include_july_14_matches(db):
+    selected_day = date(2026, 7, 15)
+    now = datetime(2026, 7, 15, 8, 0, 0)
+    july_15_match = _create_match_with_forms_at(db, datetime(2026, 7, 15, 18, 0, 0), "match-july-15")
+    july_14_match = _create_match_with_forms_at(db, datetime(2026, 7, 14, 18, 0, 0), "match-july-14")
+    _add_publicable_odd(db, july_15_match, now)
+    _add_publicable_odd(db, july_14_match, now)
+
+    export = build_daily_export(db, selected_day, now=now)
+
+    assert export["market_evaluations"]
+    assert {row["external_id"] for row in export["market_evaluations"]} == {"match-july-15"}
+    assert all(row["kickoff_local_date"] == "2026-07-15" for row in export["market_evaluations"])
+
+
+def test_daily_export_excludes_started_matches_and_stale_odds(db):
+    selected_day = date(2026, 7, 15)
+    now = datetime(2026, 7, 15, 12, 0, 0)
+    started_match = _create_match_with_forms_at(db, datetime(2026, 7, 15, 9, 0, 0), "match-started")
+    stale_odds_match = _create_match_with_forms_at(db, datetime(2026, 7, 15, 18, 0, 0), "match-stale-odds")
+    _add_publicable_odd(db, started_match, now)
+    _add_publicable_odd(db, stale_odds_match, now - timedelta(hours=25))
+
+    export = build_daily_export(db, selected_day, now=now)
+
+    assert export["market_evaluations"] == []
+    assert export["diagnostics"]["discard_reasons"]["already_started_or_closed"] == 1
+    assert export["diagnostics"]["discard_reasons"]["no_recent_odds"] == 1
+
+
 def _create_match_with_forms(db):
     kickoff = datetime.utcnow() + timedelta(days=1)
+    return _create_match_with_forms_at(db, kickoff, "match-1")
+
+
+def _create_match_with_forms_at(db, kickoff: datetime, external_id: str):
     competition = Competition(
-        external_id="comp-1",
+        external_id=f"comp-{external_id}",
         name="Test League",
         country="Spain",
         logo_url=None,
         season="2026",
         is_active=True,
     )
-    home = Team(external_id="team-home", name="Home FC", short_name="HOM", country="Spain", logo_url=None)
-    away = Team(external_id="team-away", name="Away FC", short_name="AWA", country="Spain", logo_url=None)
+    home = Team(external_id=f"team-home-{external_id}", name=f"Home FC {external_id}", short_name="HOM", country="Spain", logo_url=None)
+    away = Team(external_id=f"team-away-{external_id}", name=f"Away FC {external_id}", short_name="AWA", country="Spain", logo_url=None)
     db.add_all([competition, home, away])
     db.flush()
     match = Match(
-        external_id="match-1",
+        external_id=external_id,
         competition_id=competition.id,
         home_team_id=home.id,
         away_team_id=away.id,
@@ -220,3 +254,23 @@ def _create_match_with_forms(db):
         )
     db.commit()
     return match
+
+
+def _add_publicable_odd(db, match: Match, collected_at: datetime) -> None:
+    db.add(
+        Odds(
+            match_id=match.id,
+            bookmaker="Bet365",
+            market="goals",
+            market_family="total_goals",
+            period="full_time",
+            team_scope="all",
+            selection="over",
+            line=3.0,
+            odds=4.5,
+            provider="test",
+            validation_status="mapped",
+            collected_at=collected_at,
+        )
+    )
+    db.commit()

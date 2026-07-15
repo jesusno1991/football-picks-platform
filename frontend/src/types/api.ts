@@ -70,6 +70,8 @@ export type TipstrrMarketPick = {
   competition_name: string
   country: string
   kickoff_at: string
+  kickoff_local_date: string
+  match_status: string
   group: string
   family: string
   period: string
@@ -81,12 +83,32 @@ export type TipstrrMarketPick = {
   fair_odds?: number | null
   market_odds?: number | null
   bookmaker?: string | null
+  odds_collected_at?: string | null
   expected_value?: number | null
   merlin_score: number
   data_quality: number
   risk_level: string
   decision: string
   reason: string
+}
+
+export type PredictionExportDiagnostics = {
+  matches_found: number
+  future_matches: number
+  matches_with_recent_odds: number
+  matches_evaluated: number
+  discard_reasons: Record<string, number>
+  max_odds_age_hours: number
+}
+
+export type PredictionExportResponse = {
+  export_type: string
+  date: string
+  generated_at: string
+  timezone: string
+  diagnostics: PredictionExportDiagnostics
+  publicable_picks: TipstrrMarketPick[]
+  market_evaluations: TipstrrMarketPick[]
 }
 
 export type Match = {

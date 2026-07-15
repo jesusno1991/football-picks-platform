@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { PredictionTable } from '../components/PredictionTable'
-import { usePredictions, useTipstrrMarketPicks } from '../hooks/queries'
-import type { Prediction, TipstrrMarketPick } from '../types/api'
+import { usePredictionExport, usePredictions, useTipstrrMarketPicks } from '../hooks/queries'
+import type { PredictionExportResponse, TipstrrMarketPick } from '../types/api'
 import { formatDateInput, formatDecimal, formatPercent } from '../utils/format'
 
 function dateFromUrl() {
@@ -82,7 +82,7 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
       ) : onlyPublishable ? (
         <MarketPickTable picks={publicablePicks} />
       ) : viewMode === 'export' ? (
-        <ChatGptExportPanel date={date} predictions={predictions} marketRows={allMarketRows} publicablePicks={publicablePicks} />
+        <ChatGptExportPanel date={date} enabled={viewMode === 'export'} />
       ) : (
         <PredictionTable predictions={predictions} />
       )}
@@ -90,17 +90,8 @@ export function PicksPage({ onlyPublishable = false }: { onlyPublishable?: boole
   )
 }
 
-function ChatGptExportPanel({
-  date,
-  predictions,
-  marketRows,
-  publicablePicks,
-}: {
-  date: string
-  predictions: Prediction[]
-  marketRows: TipstrrMarketPick[]
-  publicablePicks: TipstrrMarketPick[]
-}) {
+function ChatGptExportPanel({ date, enabled }: { date: string; enabled: boolean }) {
+  const { data: exportData, isFetching, refetch } = usePredictionExport(date, enabled)
   const fileBase = `picks-predicciones-${date}`
   const prompt = [
     'Analiza estos picks prepartido como auditor externo.',
@@ -111,31 +102,46 @@ function ChatGptExportPanel({
   return (
     <div className="card p-5">
       <div className="grid gap-3 md:grid-cols-4">
-        <ExportMetric label="Predicciones" value={predictions.length} />
-        <ExportMetric label="Mercados evaluados" value={marketRows.length} />
-        <ExportMetric label="Picks publicables" value={publicablePicks.length} />
+        <ExportMetric label="Partidos encontrados" value={exportData?.diagnostics.matches_found ?? '-'} />
+        <ExportMetric label="Partidos futuros" value={exportData?.diagnostics.future_matches ?? '-'} />
+        <ExportMetric label="Mercados evaluados" value={exportData?.market_evaluations.length ?? '-'} />
+        <ExportMetric label="Picks publicables" value={exportData?.publicable_picks.length ?? '-'} />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <ExportMetric label="Con cuotas recientes" value={exportData?.diagnostics.matches_with_recent_odds ?? '-'} />
+        <ExportMetric label="Partidos evaluados" value={exportData?.diagnostics.matches_evaluated ?? '-'} />
         <ExportMetric label="Fecha" value={date} />
       </div>
       <div className="mt-5 rounded-2xl border border-line bg-slate-50 p-4">
         <div className="text-sm font-black text-slate-900">Archivo para enviar a ChatGPT</div>
         <p className="mt-1 text-sm font-semibold text-slate-600">
-          Descarga el JSON completo si quieres pasarle todos los datos estructurados. El TXT incluye todos los picks en formato legible con un prompt inicial.
+          El servidor vuelve a consultar fixtures y cuotas antes de preparar el archivo. Solo entran partidos futuros de la fecha local seleccionada con cuotas recientes.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
-            className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-black text-white"
-            onClick={() => downloadFile(`${fileBase}.json`, JSON.stringify(buildExportJson(date, predictions, marketRows, publicablePicks), null, 2), 'application/json;charset=utf-8')}
+            className="rounded-full border border-line bg-white px-4 py-2 text-sm font-black text-slate-800"
+            onClick={() => refetch()}
+          >
+            Actualizar exportación
+          </button>
+          <button
+            disabled={!exportData || isFetching}
+            className="rounded-full bg-cyan-500 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => exportData && downloadFile(`${fileBase}.json`, JSON.stringify(exportData, null, 2), 'application/json;charset=utf-8')}
           >
             Descargar JSON completo
           </button>
           <button
-            className="rounded-full border border-line bg-white px-4 py-2 text-sm font-black text-slate-800"
-            onClick={() => downloadFile(`${fileBase}.txt`, buildChatGptText(date, prompt, predictions, marketRows, publicablePicks), 'text/plain;charset=utf-8')}
+            disabled={!exportData || isFetching}
+            className="rounded-full border border-line bg-white px-4 py-2 text-sm font-black text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => exportData && downloadFile(`${fileBase}.txt`, buildChatGptText(prompt, exportData), 'text/plain;charset=utf-8')}
           >
             Descargar TXT para ChatGPT
           </button>
         </div>
+        {isFetching ? <div className="mt-3 text-sm font-black text-cyan-700">Actualizando fixtures, cuotas y candidatos...</div> : null}
       </div>
+      {exportData ? <ExportDiagnostics exportData={exportData} /> : null}
       <div className="mt-5">
         <label className="text-xs font-black uppercase text-slate-500">Prompt recomendado</label>
         <textarea
@@ -143,6 +149,40 @@ function ChatGptExportPanel({
           readOnly
           value={prompt}
         />
+      </div>
+    </div>
+  )
+}
+
+function ExportDiagnostics({ exportData }: { exportData: PredictionExportResponse }) {
+  const reasons = Object.entries(exportData.diagnostics.discard_reasons)
+  return (
+    <div className="mt-5 rounded-2xl border border-line bg-white p-4">
+      <div className="text-sm font-black text-slate-900">Diagnóstico de exportación</div>
+      <div className="mt-2 grid gap-2 text-sm font-semibold text-slate-600 md:grid-cols-2">
+        <div>Generado: {new Date(exportData.generated_at).toLocaleString('es-ES')}</div>
+        <div>Zona horaria: {exportData.timezone}</div>
+        <div>Cuota máxima antigua: {exportData.diagnostics.max_odds_age_hours}h</div>
+        <div>Mercados exportados: {exportData.market_evaluations.length}</div>
+      </div>
+      {exportData.market_evaluations.length === 0 ? (
+        <div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800">
+          No hay picks exportables para esta fecha con las reglas actuales.
+        </div>
+      ) : null}
+      <div className="mt-4">
+        <div className="text-xs font-black uppercase text-slate-500">Motivos de descarte</div>
+        {reasons.length ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {reasons.map(([reason, count]) => (
+              <span key={reason} className="rounded-full border border-line bg-slate-50 px-3 py-1 text-xs font-black text-slate-700">
+                {reason}: {count}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-2 text-sm font-semibold text-slate-500">Sin descartes registrados.</div>
+        )}
       </div>
     </div>
   )
@@ -225,110 +265,41 @@ function value(input?: number | null) {
   return input ?? -999
 }
 
-function buildExportJson(date: string, predictions: Prediction[], marketRows: TipstrrMarketPick[], publicablePicks: TipstrrMarketPick[]) {
-  return {
-    export_type: 'football_pre_match_picks_for_chatgpt',
-    exported_at: new Date().toISOString(),
-    date,
-    summary: {
-      predictions: predictions.length,
-      market_evaluations: marketRows.length,
-      publishable_picks: publicablePicks.length,
-    },
-    publicable_picks: publicablePicks.map(normalizeMarketPickForExport),
-    market_evaluations: marketRows.map(normalizeMarketPickForExport),
-    predictions: predictions.map(normalizePredictionForExport),
-  }
-}
-
-function buildChatGptText(
-  date: string,
-  prompt: string,
-  predictions: Prediction[],
-  marketRows: TipstrrMarketPick[],
-  publicablePicks: TipstrrMarketPick[],
-) {
+function buildChatGptText(prompt: string, exportData: PredictionExportResponse) {
+  const reasons = Object.entries(exportData.diagnostics.discard_reasons).map(([reason, count]) => `${reason}: ${count}`)
   const lines = [
     'EXPORTACION FOOTBALL PICKS PLATFORM',
-    `Fecha analizada: ${date}`,
-    `Exportado: ${new Date().toISOString()}`,
+    `Fecha local analizada: ${exportData.date}`,
+    `Exportado: ${exportData.generated_at}`,
+    `Zona horaria: ${exportData.timezone}`,
     '',
     'PROMPT RECOMENDADO',
     prompt,
     '',
-    'RESUMEN',
-    `Predicciones historicas: ${predictions.length}`,
-    `Mercados evaluados: ${marketRows.length}`,
-    `Picks publicables: ${publicablePicks.length}`,
+    'DIAGNOSTICO',
+    `Partidos encontrados: ${exportData.diagnostics.matches_found}`,
+    `Partidos futuros: ${exportData.diagnostics.future_matches}`,
+    `Partidos con cuotas recientes: ${exportData.diagnostics.matches_with_recent_odds}`,
+    `Partidos evaluados: ${exportData.diagnostics.matches_evaluated}`,
+    `Maxima antiguedad de cuota: ${exportData.diagnostics.max_odds_age_hours}h`,
+    `Motivos de descarte: ${reasons.length ? reasons.join(', ') : 'ninguno'}`,
     '',
     'PICKS PUBLICABLES',
-    ...publicablePicks.map((pick, index) => formatMarketPickLine(index + 1, pick)),
+    ...exportData.publicable_picks.map((pick, index) => formatMarketPickLine(index + 1, pick)),
     '',
-    'TODOS LOS MERCADOS EVALUADOS',
-    ...marketRows.map((pick, index) => formatMarketPickLine(index + 1, pick)),
-    '',
-    'PREDICCIONES GUARDADAS',
-    ...predictions.map((prediction, index) => formatPredictionLine(index + 1, prediction)),
+    'TODOS LOS CANDIDATOS FUTUROS CON CUOTA RECIENTE',
+    ...exportData.market_evaluations.map((pick, index) => formatMarketPickLine(index + 1, pick)),
   ]
 
   return lines.join('\n')
 }
 
-function normalizeMarketPickForExport(pick: TipstrrMarketPick) {
-  return {
-    match_id: pick.match_id,
-    external_id: pick.external_id,
-    match_name: pick.match_name,
-    kickoff_at: pick.kickoff_at,
-    country: pick.country,
-    competition: pick.competition_name,
-    group: pick.group,
-    market_family: pick.family,
-    market_label: pick.label,
-    period: pick.period,
-    team_scope: pick.team_scope,
-    selection: pick.selection,
-    line: pick.line ?? null,
-    model_probability: pick.model_probability ?? null,
-    fair_odds: pick.fair_odds ?? null,
-    market_odds: pick.market_odds ?? null,
-    bookmaker: pick.bookmaker ?? null,
-    expected_value: pick.expected_value ?? null,
-    merlin_score: pick.merlin_score,
-    data_quality: pick.data_quality,
-    risk_level: pick.risk_level,
-    decision: pick.decision,
-    reason: pick.reason,
-  }
-}
-
-function normalizePredictionForExport(prediction: Prediction) {
-  return {
-    id: prediction.id,
-    match_id: prediction.match_id,
-    match_name: prediction.match ? `${prediction.match.home_team.name} vs ${prediction.match.away_team.name}` : null,
-    kickoff_at: prediction.match?.kickoff_at ?? null,
-    competition: prediction.match?.competition.name ?? null,
-    country: prediction.match?.competition.country ?? null,
-    market: prediction.market,
-    selection: prediction.selection,
-    line: prediction.line ?? null,
-    predicted_probability: prediction.predicted_probability ?? null,
-    fair_odds: prediction.fair_odds ?? null,
-    available_odds: prediction.available_odds ?? null,
-    expected_value: prediction.expected_value ?? null,
-    confidence: prediction.confidence ?? null,
-    recommended_stake: prediction.recommended_stake,
-    status: prediction.status,
-    explanation: prediction.explanation,
-    result: prediction.result ?? null,
-    profit: prediction.profit ?? null,
-  }
-}
-
 function formatMarketPickLine(index: number, pick: TipstrrMarketPick) {
   return [
     `${index}. ${pick.match_name}`,
+    `kickoff_at=${pick.kickoff_at}`,
+    `fecha_local=${pick.kickoff_local_date}`,
+    `estado=${pick.match_status}`,
     `${pick.country} / ${pick.competition_name}`,
     `mercado="${pick.label}"`,
     `familia=${pick.family}`,
@@ -339,31 +310,14 @@ function formatMarketPickLine(index: number, pick: TipstrrMarketPick) {
     `prob=${formatPercent(pick.model_probability)}`,
     `cuota_justa=${formatDecimal(pick.fair_odds, 2)}`,
     `cuota=${formatDecimal(pick.market_odds, 2)}`,
+    `bookmaker=${pick.bookmaker ?? '-'}`,
+    `odds_timestamp=${pick.odds_collected_at ?? '-'}`,
     `EV=${formatDecimal(pick.expected_value, 3)}`,
     `Merlin=${formatDecimal(pick.merlin_score, 1)}`,
     `calidad=${formatDecimal(pick.data_quality, 0)}`,
     `riesgo=${pick.risk_level}`,
     `decision=${pick.decision}`,
     `motivo="${pick.reason}"`,
-  ].join(' | ')
-}
-
-function formatPredictionLine(index: number, prediction: Prediction) {
-  const matchName = prediction.match ? `${prediction.match.home_team.name} vs ${prediction.match.away_team.name}` : `match_id=${prediction.match_id}`
-  return [
-    `${index}. ${matchName}`,
-    prediction.match ? `${prediction.match.competition.country} / ${prediction.match.competition.name}` : 'competicion=-',
-    `mercado=${prediction.market}`,
-    `seleccion=${prediction.selection}`,
-    `linea=${prediction.line ?? '-'}`,
-    `prob=${formatPercent(prediction.predicted_probability)}`,
-    `cuota_justa=${formatDecimal(prediction.fair_odds, 2)}`,
-    `cuota=${formatDecimal(prediction.available_odds, 2)}`,
-    `EV=${formatDecimal(prediction.expected_value, 3)}`,
-    `confianza=${formatPercent(prediction.confidence)}`,
-    `stake=${formatDecimal(prediction.recommended_stake, 1)}`,
-    `estado=${prediction.status}`,
-    `explicacion="${prediction.explanation}"`,
   ].join(' | ')
 }
 

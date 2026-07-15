@@ -24,6 +24,7 @@ from app.models import (
     TeamForm,
     TeamMatchStatistics,
 )
+from app.repositories import queries
 
 
 INITIAL_SYSTEMS = [
@@ -277,7 +278,7 @@ def collect_schedule_range(db: Session, date_from: date, date_to: date) -> dict[
 
 def collect_deep_data_for_date(db: Session, match_date: date) -> dict[str, int]:
     collect_schedule_data(db, match_date)
-    matches = db.scalars(select(Match).where(Match.kickoff_at >= datetime.combine(match_date, datetime.min.time()), Match.kickoff_at <= datetime.combine(match_date, datetime.max.time()))).all()
+    matches = queries.list_matches(db, match_date, limit=5000)
     totals = {"matches": 0, "statistics": 0, "odds": 0, "events": 0, "lineups": 0, "standings": 0, "errors": 0}
     for match in matches:
         try:

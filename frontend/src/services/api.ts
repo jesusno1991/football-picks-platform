@@ -12,6 +12,7 @@ import type {
   OddsRow,
   Overview,
   Prediction,
+  PredictionExportResponse,
   SearchResult,
   StandingRow,
   Team,
@@ -60,6 +61,11 @@ export async function fetchMatchOdds(id: number) {
 
 export async function fetchPredictions(status?: string, date?: string) {
   const response = await api.get<Prediction[]>('/api/predictions', { params: { status, date } })
+  return response.data
+}
+
+export async function fetchPredictionExport(date: string) {
+  const response = await api.get<PredictionExportResponse>('/api/predictions/export', { params: { date, refresh: true } })
   return response.data
 }
 

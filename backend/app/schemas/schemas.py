@@ -138,6 +138,8 @@ class TipstrrMarketPickRead(BaseModel):
     competition_name: str
     country: str
     kickoff_at: datetime
+    kickoff_local_date: str
+    match_status: str
     group: str
     family: str
     period: str
@@ -149,6 +151,7 @@ class TipstrrMarketPickRead(BaseModel):
     fair_odds: float | None = None
     market_odds: float | None = None
     bookmaker: str | None = None
+    odds_collected_at: datetime | None = None
     expected_value: float | None = None
     merlin_score: float
     data_quality: float

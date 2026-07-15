@@ -69,7 +69,7 @@ from app.services.statistics_service import (
     performance_by_system,
     profit_curve,
 )
-from app.services.tipstrr_market_service import list_tipstrr_market_picks
+from app.services.tipstrr_market_service import build_daily_export, list_tipstrr_market_picks
 from app.services.ultimate_engine import foundation_report, list_rankings, rank_predictions
 from app.tasks.scheduled import run_maintenance
 from app.core.config import get_settings
@@ -585,6 +585,15 @@ def get_predictions(
         _ensure_date_loaded(db, match_date)
         return queries.list_predictions_for_date(db, match_date, status, market)
     return queries.list_predictions(db, status, market)
+
+
+@router.get("/predictions/export")
+def export_predictions(match_date: date = Query(alias="date"), refresh: bool = True, db: Session = Depends(get_db)) -> dict:
+    if refresh:
+        collect_deep_data_for_date(db, match_date)
+    else:
+        _ensure_date_loaded(db, match_date)
+    return build_daily_export(db, match_date)
 
 
 @router.get("/predictions/{prediction_id}", response_model=PredictionRead)
