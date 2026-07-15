@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from app.models import Competition, Match, Odds, Prediction, PredictionSystem, Team
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.main import _rate_buckets
 from app.repositories.queries import latest_odds
 from app.services.collection_service import collect_mock_data
@@ -13,6 +13,10 @@ def test_health(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_settings_load_env_from_root_or_backend():
+    assert "../.env" in Settings.model_config["env_file"]
 
 
 def test_api_responses_include_security_headers(client):
@@ -93,8 +97,8 @@ def test_admin_collect_uses_real_provider_when_not_mock(client, monkeypatch):
 
 def test_model_health_reports_provider_configuration_error(client, monkeypatch):
     monkeypatch.setenv("DATA_PROVIDER", "api_football")
-    monkeypatch.delenv("API_FOOTBALL_KEY", raising=False)
-    monkeypatch.delenv("FOOTBALL_API_KEY", raising=False)
+    monkeypatch.setenv("API_FOOTBALL_KEY", "")
+    monkeypatch.setenv("FOOTBALL_API_KEY", "")
     get_settings.cache_clear()
 
     response = client.get("/api/model-health")
